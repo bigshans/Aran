@@ -22,45 +22,156 @@ class ProfilesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final list = state.profiles.profiles;
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    if (narrow) return _buildPhone(context, list);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
-        Row(children: [
-          const Text('配置与订阅', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Btn(
-            label: state.isPending('updcheck') ? '检查中…' : '检查更新',
-            icon: Icons.refresh_rounded,
-            loading: state.isPending('updcheck'),
-            onTap: () => state.runPending('updcheck', () => state.checkUpdatesNow()),
-          ),
-          const SizedBox(width: 8),
-          Btn(label: '从 URL 导入', icon: Icons.link_rounded, onTap: () => _addUrl(context)),
-          const SizedBox(width: 8),
-          Btn(label: '从文件导入', icon: Icons.folder_open_rounded, onTap: () => _addFile(context)),
-          const SizedBox(width: 8),
-          Btn(
-            label: '导入 Sparkle 配置',
-            icon: Icons.download_rounded,
-            loading: state.isPending('import'),
-            onTap: () => state.runPending('import', () => _importSparkle(context)),
-          ),
-        ]),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Text('配置与订阅', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            Btn(
+              label: state.isPending('updcheck') ? '检查中…' : '检查更新',
+              icon: Icons.refresh_rounded,
+              loading: state.isPending('updcheck'),
+              onTap: () => state.runPending('updcheck', () => state.checkUpdatesNow()),
+            ),
+            Btn(label: '从 URL 导入', icon: Icons.link_rounded, onTap: () => _addUrl(context)),
+            if (true) ...[
+              Btn(label: '从文件导入', icon: Icons.folder_open_rounded, onTap: () => _addFile(context)),
+              Btn(
+                label: '导入 Sparkle 配置',
+                icon: Icons.download_rounded,
+                loading: state.isPending('import'),
+                onTap: () => state.runPending('import', () => _importSparkle(context)),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 6),
         Text('点击任意一行即可切换为该配置；启动代理时 Aran 会把自动策略组改写为自己接管。',
             style: mono.copyWith(fontSize: 11, color: dim)),
         const SizedBox(height: 16),
-        if (list.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: panel, border: Border.all(color: line, width: borderWidth), borderRadius: BorderRadius.circular(radius)),
-            child: Text('还没有配置。可以导入机场订阅链接，或直接导入本机 Sparkle 正在用的配置。',
-                style: mono.copyWith(fontSize: 12, color: dim)),
-          ),
+        if (list.isEmpty) _empty(),
         for (final p in list) _ProfileRow(state: state, profile: p),
       ],
     );
   }
+
+  /// Phone: one title row with the refresh action on the right, then a single
+  /// full-width primary action. Buttons scattered in a Wrap was the "错乱" layout —
+  /// three controls of different widths wrapping at arbitrary points.
+  Widget _buildPhone(BuildContext context, List<Profile> list) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        // Importing a subscription is a network round-trip with no other feedback;
+        // without this the button just looked dead for a second or two.
+        if (state.busy)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(minHeight: 3, color: blue, backgroundColor: line),
+            ),
+          ),
+        Row(
+          children: [
+            Expanded(
+              child: Row(children: [
+                Text('配置与订阅',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: text)),
+                if (state.busy) ...[
+                  const SizedBox(width: 10),
+                  const SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('正在导入…', style: mono.copyWith(fontSize: 11, color: blue)),
+                ],
+              ]),
+            ),
+            IconButton(
+              tooltip: '检查订阅更新',
+              visualDensity: VisualDensity.compact,
+              onPressed: state.isPending('updcheck')
+                  ? null
+                  : () => state.runPending('updcheck', () => state.checkUpdatesNow()),
+              icon: state.isPending('updcheck')
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: dim),
+                    )
+                  : Icon(Icons.refresh_rounded, size: 20, color: dim),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          height: 46,
+          child: FilledButton.icon(
+            onPressed: state.busy ? null : () => _addUrl(context),
+            icon: const Icon(Icons.add_link, size: 18),
+            label: const Text('从 URL 导入订阅'),
+          ),
+        ),
+        if (true) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _addFile(context),
+                  child: const Text('从文件导入'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: state.isPending('import')
+                      ? null
+                      : () => state.runPending('import', () => _importSparkle(context)),
+                  child: const Text('导入 Sparkle'),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 18),
+        if (list.isEmpty)
+          _empty()
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 8),
+            child: Text('轻点切换 · 启动时 Aran 接管自动策略组',
+                style: mono.copyWith(fontSize: 11, color: dim)),
+          ),
+          for (final p in list) _ProfileRow(state: state, profile: p),
+        ],
+      ],
+    );
+  }
+
+
+
+  Widget _empty() => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: line),
+        ),
+        child: Text('还没有配置。导入机场订阅链接后，Aran 会用它生成配置并接管自动策略组。',
+            style: mono.copyWith(fontSize: 12, color: dim, height: 1.5)),
+      );
 
   static Future<void> _history(BuildContext context, AppState state, Profile profile) async {
     final snaps = await state.profiles.snapshots(profile.id);
@@ -152,23 +263,28 @@ class ProfilesPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            Row(children: [
-              Text('自动更新', style: mono.copyWith(fontSize: 12, color: dim)),
-              const SizedBox(width: 12),
-              DropdownButton<int>(
-                value: _intervals.containsKey(hours) ? hours : 24,
-                isDense: true,
-                dropdownColor: panel,
-                style: mono.copyWith(fontSize: 12, color: text),
-                items: [
-                  for (final e in _intervals.entries)
-                    DropdownMenuItem(value: e.key, child: Text(e.value)),
-                ],
-                onChanged: (v) => setDialogState(() => hours = v ?? 24),
-              ),
-              const Spacer(),
-              Text('仅对有 URL 的订阅生效', style: mono.copyWith(fontSize: 11, color: dim)),
-            ]),
+            // Wrap, not Row: the hint text is what overflowed the dialog by 55 px
+            // on a phone (that yellow/black "RIGHT OVERFLOWED" strip).
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('自动更新', style: mono.copyWith(fontSize: 12, color: dim)),
+                DropdownButton<int>(
+                  value: _intervals.containsKey(hours) ? hours : 24,
+                  isDense: true,
+                  dropdownColor: panel,
+                  style: mono.copyWith(fontSize: 12, color: text),
+                  items: [
+                    for (final e in _intervals.entries)
+                      DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  ],
+                  onChanged: (v) => setDialogState(() => hours = v ?? 24),
+                ),
+                Text('仅对有 URL 的订阅生效', style: mono.copyWith(fontSize: 11, color: dim)),
+              ],
+            ),
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
@@ -255,31 +371,84 @@ class ProfilesPage extends StatelessWidget {
     }
   }
 
-  Future<void> _addUrl(BuildContext context) async {
-    final urlCtrl = TextEditingController();
+  Future<void> _addUrl(BuildContext context, {String? initialUrl}) async {
+    final urlCtrl = TextEditingController(text: initialUrl ?? '');
     final nameCtrl = TextEditingController();
+    var viaProxy = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
         title: const Text('导入订阅链接'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
             controller: urlCtrl,
-            autofocus: true,
+            autofocus: initialUrl == null,
             decoration: const InputDecoration(labelText: '订阅 URL', hintText: 'https://…'),
           ),
           const SizedBox(height: 12),
           TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '名称（可选）')),
+          const SizedBox(height: 8),
+          // The panel domain is often unreachable directly; this lets one import
+          // go through the running tunnel without changing a global setting.
+          CheckboxListTile(
+            value: viaProxy,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            onChanged: state.proxyRunning
+                ? (v) => setDialogState(() => viaProxy = v ?? false)
+                : null,
+            title: Text('通过当前代理拉取',
+                style: mono.copyWith(fontSize: 12, color: state.proxyRunning ? text : dim)),
+            subtitle: Text(
+              state.proxyRunning ? '机场域名被墙时勾上' : '未连接代理，先连上再勾选',
+              style: mono.copyWith(fontSize: 10.5, color: dim),
+            ),
+          ),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('导入')),
         ],
-      ),
+      )),
     );
     if (ok == true && urlCtrl.text.trim().isNotEmpty) {
-      await state.addProfileFromUrl(urlCtrl.text.trim(), name: nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim());
+      await state.addProfileFromUrl(urlCtrl.text.trim(),
+          name: nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+          viaProxy: viaProxy);
+      _reportResult(context, state);
     }
+  }
+
+  /// Result toast for row actions (update / delete). Same shape as [_reportResult],
+  /// different wording.
+  static void _notify(BuildContext context, AppState state, String done) {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final err = state.error;
+    final failed = err != null && err.trim().isNotEmpty;
+    messenger.showSnackBar(SnackBar(
+      content: Text(failed ? '$done失败：$err' : done),
+      backgroundColor: failed ? red : null,
+      duration: Duration(seconds: failed ? 5 : 2),
+    ));
+  }
+
+  /// Every import path funnels through here: `addProfileFrom*` swallows the error
+  /// into `state.error`, so without this the page just went quiet.
+  static void _reportResult(BuildContext context, AppState state) {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final err = state.error;
+    final failed = err != null && err.trim().isNotEmpty;
+    messenger.showSnackBar(SnackBar(
+      content: Text(failed ? '导入失败：$err' : '已导入订阅'),
+      backgroundColor: failed ? red : null,
+      duration: Duration(seconds: failed ? 5 : 2),
+    ));
   }
 
   Future<void> _addFile(BuildContext context) async {
@@ -301,6 +470,7 @@ class ProfilesPage extends StatelessWidget {
     );
     if (ok == true && pathCtrl.text.trim().isNotEmpty) {
       await state.addProfileFromFile(pathCtrl.text.trim());
+      _reportResult(context, state);
     }
   }
 
@@ -338,11 +508,18 @@ class _ProfileRow extends StatelessWidget {
           case 'history':
             ProfilesPage._history(context, state, profile);
           case 'update':
-            state.runPending('upd:${profile.id}', () => state.updateProfile(profile.id));
+            state
+                .runPending('upd:${profile.id}', () => state.updateProfile(profile.id))
+                .then((_) => ProfilesPage._notify(context, state, '订阅已更新'));
           case 'proxy':
-            state.runPending('upd:${profile.id}', () => state.updateProfile(profile.id, viaProxy: true));
+            state
+                .runPending('upd:${profile.id}',
+                    () => state.updateProfile(profile.id, viaProxy: true))
+                .then((_) => ProfilesPage._notify(context, state, '订阅已更新（经代理）'));
           case 'delete':
-            state.runPending('rm:${profile.id}', () => state.removeProfile(profile.id));
+            state
+                .runPending('rm:${profile.id}', () => state.removeProfile(profile.id))
+                .then((_) => ProfilesPage._notify(context, state, '已删除配置'));
         }
       },
       itemBuilder: (context) => [
@@ -378,6 +555,9 @@ class _ProfileRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = state.profiles.activeId == profile.id;
     final activating = state.isPending('act:${profile.id}');
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return _buildPhone(context, active: active, activating: activating);
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -480,6 +660,88 @@ class _ProfileRow extends StatelessWidget {
         // "activate" affordance.
         _rowMenu(context, profile),
       ]),
+        ),
+      ),
+    );
+  }
+
+  /// Phone card. Deliberately simple: no inline chips, no quota bar — the desktop
+  /// row overflows a 360 dp screen by ~200 px, and a Column of bars inside a list
+  /// row is exactly the kind of thing that turned the page blank last time.
+  Widget _buildPhone(BuildContext context, {required bool active, required bool activating}) {
+    final p = profile;
+    final updating = state.isPending('upd:${p.id}');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: active ? panelAlt : panel,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: active || activating
+              ? null
+              : () => state.runPending('act:${p.id}', () => state.activateProfile(p.id)),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: active ? blue : line),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 10),
+                  child: Icon(
+                    active ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: 18,
+                    color: active ? green : dim,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: active ? green : text),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          if (updating)
+                            '正在更新订阅…'
+                          else
+                            (active ? '正在使用' : (activating ? '启用中…' : '轻点启用')),
+                          if (p.trafficLeft != null && p.trafficTotal != null)
+                            '剩余 ${fmtBytes(p.trafficLeft)} / ${fmtBytes(p.trafficTotal)}',
+                          '更新于 ${_fmt(p.updatedAt)}',
+                        ].join('  ·  '),
+                        maxLines: 2,
+                        style: mono.copyWith(fontSize: 10.5, color: dim, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                if (updating)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(8, 4, 12, 0),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  _rowMenu(context, p),
+              ],
+            ),
+          ),
         ),
       ),
     );

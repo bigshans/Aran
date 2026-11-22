@@ -4,6 +4,23 @@ import 'dart:io';
 import 'package:aran_core/aran_core.dart';
 import 'package:flutter/foundation.dart';
 
+/// How aggressively the scheduler is allowed to spend battery.
+///
+/// Desktop never leaves [active]; a phone has three states (docs/ANDROID.md
+/// 决策 #13/#14): foreground, backgrounded, screen off. The whole point is that
+/// no probe fires while nobody is using the tunnel — switching nodes then has no
+/// beneficiary, it just wakes the radio.
+enum EnginePowerMode {
+  /// Foreground: 10s current / 60s candidates / 600s rest / 1s tick.
+  active,
+
+  /// Backgrounded but still reachable: slow everything down, keep a heartbeat.
+  background,
+
+  /// Screen off: only the node in use, every five minutes.
+  screenOff,
+}
+
 class RankedNode {
   final String name;
   final double multiplier;
@@ -63,6 +80,14 @@ class Snapshot {
   final double trafficMb;
   final DateTime at;
   final List<double> rates;
+
+  /// Separate directions for the Android notification (MB/s).
+  final double upRate;
+  final double downRate;
+
+  /// Cumulative bytes per direction (for the idle notification line).
+  final int upBytes;
+  final int downBytes;
   final List<String> managedGroups;
   final String? error;
 
@@ -85,6 +110,10 @@ class Snapshot {
     required this.trafficMb,
     required this.at,
     this.rates = const [],
+    this.upRate = 0,
+    this.downRate = 0,
+    this.upBytes = 0,
+    this.downBytes = 0,
     this.managedGroups = const [],
     this.error,
   });
@@ -108,6 +137,10 @@ class Snapshot {
         trafficMb: 0,
         at: DateTime.now(),
         rates: const [],
+        upRate: 0,
+        downRate: 0,
+        upBytes: 0,
+        downBytes: 0,
         managedGroups: const [],
         error: error,
       );
@@ -161,6 +194,9 @@ class Engine {
   bool _sampling = false;
   Timer? _timer;
   Timer? _observerTimer;
+
+  EnginePowerMode _power = EnginePowerMode.active;
+  EnginePowerMode get power => _power;
   final Map<String, String> _lastGroupKeys = {};
 
   Engine({
@@ -204,8 +240,61 @@ class Engine {
     } catch (_) {
       _version = '?';
     }
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-    _observerTimer = Timer.periodic(const Duration(milliseconds: 200), (_) => _sample());
+    _restartTimers();
+  }
+
+  /// Switch the whole loop between battery profiles. Safe to call repeatedly;
+  /// no-ops when nothing changes so a lifecycle storm does not thrash timers.
+  void setPowerMode(EnginePowerMode mode) {
+    if (_power == mode) return;
+    _power = mode;
+    if (!_running) return;
+    _applyProbeIntervals();
+    _restartTimers();
+  }
+
+  void _applyProbeIntervals() {
+    switch (_power) {
+      case EnginePowerMode.active:
+        _scheduler
+          ..currentInterval = const Duration(seconds: 10)
+          ..candidateInterval = const Duration(seconds: 60)
+          ..restInterval = const Duration(seconds: 600)
+          ..idleInterval = const Duration(seconds: 60);
+      case EnginePowerMode.background:
+        // Nothing is being watched; keep the current node healthy and refresh the
+        // rest rarely. 5 minutes is what the platform's Doze would allow anyway.
+        _scheduler
+          ..currentInterval = const Duration(seconds: 60)
+          ..candidateInterval = const Duration(minutes: 10)
+          ..restInterval = const Duration(minutes: 60)
+          ..idleInterval = const Duration(minutes: 10);
+      case EnginePowerMode.screenOff:
+        // docs/ANDROID.md 决策 #13: only the node in use gets a heartbeat; every
+        // other probe is effectively disabled (one hour > any plausible sleep).
+        _scheduler
+          ..currentInterval = const Duration(minutes: 5)
+          ..candidateInterval = const Duration(hours: 1)
+          ..restInterval = const Duration(hours: 2)
+          ..idleInterval = const Duration(minutes: 5);
+    }
+  }
+
+  void _restartTimers() {
+    _timer?.cancel();
+    _observerTimer?.cancel();
+    final tick = switch (_power) {
+      EnginePowerMode.active => const Duration(seconds: 1),
+      EnginePowerMode.background => const Duration(seconds: 5),
+      EnginePowerMode.screenOff => const Duration(seconds: 30),
+    };
+    final sample = switch (_power) {
+      EnginePowerMode.active => const Duration(milliseconds: 200),
+      EnginePowerMode.background => const Duration(seconds: 1),
+      EnginePowerMode.screenOff => const Duration(seconds: 5),
+    };
+    _timer = Timer.periodic(tick, (_) => _tick());
+    _observerTimer = Timer.periodic(sample, (_) => _sample());
   }
 
   void setTakeover(bool value) => takeover = value;
@@ -248,8 +337,11 @@ class Engine {
   }
 
   static const _realTypes = {
+    // These are mihomo's /proxies `type` strings verbatim. `Socks5` (not `Socks`)
+    // is what a socks5 outbound reports — missing it made every socks node
+    // invisible to the scheduler (found on Android, 2026-11-22).
     'Vless', 'Vmess', 'Shadowsocks', 'ShadowsocksR', 'Trojan', 'Hysteria', 'Hysteria2',
-    'Tuic', 'Socks', 'Http', 'WireGuard', 'Ssh', 'Snell', 'Http2', 'AnyTLS', 'Masque',
+    'Tuic', 'Socks', 'Socks5', 'Http', 'WireGuard', 'Ssh', 'Snell', 'Http2', 'AnyTLS', 'Masque',
   };
 
   static bool isPseudo(String name) =>
@@ -395,6 +487,10 @@ class Engine {
       trafficMb: _observer.totalBytes / 1e6,
       at: now,
       rates: List.unmodifiable(_rates),
+      upRate: _observer.upRateMbps,
+      downRate: _observer.downRateMbps,
+      upBytes: _observer.upBytes,
+      downBytes: _observer.downBytes,
       managedGroups: List.unmodifiable(groups),
     );
 

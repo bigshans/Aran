@@ -53,6 +53,15 @@ class AranSettings {
   /// most people at 100%.
   final double uiScale;
 
+  /// Battery profile the user picked (Android). `auto` follows foreground /
+  /// background / screen-off; `aggressive` treats background like screen-off;
+  /// `off` never throttles (cheapest for the radio, most expensive for the battery).
+  final String powerMode;
+
+  /// How subscription downloads reach the network: `auto` (direct, then the
+  /// running proxy if that fails), `always` (proxy first), `never` (direct only).
+  final String fetchViaProxy;
+
   /// Collapsed (icon-only) navigation rail.
   final bool compactRail;
 
@@ -146,6 +155,8 @@ class AranSettings {
     this.themeStyle = 'modern',
     this.accentColor = '',
     this.uiScale = 1.15,
+    this.powerMode = 'auto',
+    this.fetchViaProxy = 'auto',
     this.compactRail = false,
     this.kernelPath = '',
     this.dnsProvider = 'builtin',
@@ -201,6 +212,8 @@ class AranSettings {
     String? themeStyle,
     String? accentColor,
     double? uiScale,
+    String? powerMode,
+    String? fetchViaProxy,
     bool? compactRail,
     String? kernelPath,
     String? dnsProvider,
@@ -255,6 +268,8 @@ class AranSettings {
         themeStyle: themeStyle ?? this.themeStyle,
         accentColor: accentColor ?? this.accentColor,
         uiScale: uiScale ?? this.uiScale,
+        powerMode: powerMode ?? this.powerMode,
+        fetchViaProxy: fetchViaProxy ?? this.fetchViaProxy,
         compactRail: compactRail ?? this.compactRail,
         kernelPath: kernelPath ?? this.kernelPath,
         dnsProvider: dnsProvider ?? this.dnsProvider,
@@ -310,6 +325,8 @@ class AranSettings {
         'themeStyle': themeStyle,
         'accentColor': accentColor,
         'uiScale': uiScale,
+        'powerMode': powerMode,
+        'fetchViaProxy': fetchViaProxy,
         'compactRail': compactRail,
         'kernelPath': kernelPath,
         'dnsProvider': dnsProvider,
@@ -368,6 +385,8 @@ class AranSettings {
       themeStyle: j['themeStyle'] as String? ?? 'modern',
       accentColor: j['accentColor'] as String? ?? '',
       uiScale: (j['uiScale'] as num?)?.toDouble() ?? 1.15,
+      powerMode: (j['powerMode'] as String?) ?? 'auto',
+      fetchViaProxy: (j['fetchViaProxy'] as String?) ?? 'auto',
       compactRail: j['compactRail'] as bool? ?? false,
       kernelPath: j['kernelPath'] as String? ?? '',
       dnsProvider: j['dnsProvider'] as String? ?? 'builtin',

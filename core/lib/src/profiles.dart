@@ -183,8 +183,8 @@ class ProfileStore {
     return f.existsSync() ? f.readAsStringSync() : null;
   }
 
-  Future<Profile> addFromUrl(String url, {String? name}) async {
-    final res = await _download(url);
+  Future<Profile> addFromUrl(String url, {String? name, String? proxyAddress}) async {
+    final res = await _download(url, proxyAddress: proxyAddress);
     final text = res.text;
     final id = _newId();
     await configFile(id).parent.create(recursive: true);
@@ -200,6 +200,40 @@ class ProfileStore {
       trafficTotal: res.total,
       expireAt: res.expire,
       trafficLeftNotice: res.used == null && res.total == null ? _noticeBytes(text, '剩余流量') : null,
+    );
+    _profiles.add(p);
+    if (_activeId == null || !_profiles.any((x) => x.id == _activeId)) _activeId = id;
+    await _save();
+    return p;
+  }
+
+  /// Import from text we already have in memory: a file the user picked through
+  /// SAF (no filesystem path on Android) or a QR code that contained the config
+  /// itself. Accepts a base64 blob, same as [addFromFile]'s downloaded siblings.
+  Future<Profile> addFromText(String raw, {String? name}) async {
+    var text = raw;
+    if (!ConfigTransform.looksLikeMihomoConfig(text)) {
+      try {
+        final decoded = utf8.decode(base64.decode(text.replaceAll(RegExp(r'\s'), '')), allowMalformed: true);
+        if (ConfigTransform.looksLikeMihomoConfig(decoded)) text = decoded;
+      } catch (_) {}
+    }
+    if (!ConfigTransform.looksLikeMihomoConfig(text)) {
+      throw const FormatException('这段内容看起来不是 mihomo/clash 配置（找不到 proxies / proxy-groups）');
+    }
+    final id = _newId();
+    await configFile(id).parent.create(recursive: true);
+    await configFile(id).writeAsString(text);
+    final p = Profile(
+      id: id,
+      name: name?.isNotEmpty == true ? name! : '导入的配置',
+      url: null,
+      updatedAt: DateTime.now(),
+      bytes: text.length,
+      active: false,
+      trafficUsed: _noticeBytes(text, '已用流量'),
+      trafficTotal: _noticeBytes(text, '总流量'),
+      trafficLeftNotice: _noticeBytes(text, '剩余流量'),
     );
     _profiles.add(p);
     if (_activeId == null || !_profiles.any((x) => x.id == _activeId)) _activeId = id;

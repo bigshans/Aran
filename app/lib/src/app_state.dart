@@ -13,10 +13,23 @@ class AppState extends ChangeNotifier {
   final Directory dataDir;
 
   late final ProfileStore profiles;
+  /// Desktop: a child process. Android: the app's foreground service owns the
+  /// in-process core. `AppState` and the scheduler are identical either way.
   late KernelManager kernel;
 
   Engine? engine;
   MihomoApi? api;
+
+  /// Desired battery profile for the scheduler (mobile drives this from
+  /// lifecycle/screen state; desktop stays in [EnginePowerMode.active]).
+  EnginePowerMode powerMode = EnginePowerMode.active;
+
+  /// Applies and remembers the profile so a restarted engine keeps it.
+  void setPowerMode(EnginePowerMode mode) {
+    if (powerMode == mode) return;
+    powerMode = mode;
+    engine?.setPowerMode(mode);
+  }
 
   final List<String> logs = [];
   bool busy = false;
@@ -102,6 +115,8 @@ class AppState extends ChangeNotifier {
     platform = createPlatform();
     platform.serviceScope = settings.serviceScope;
     await dataDir.create(recursive: true);
+    // Android has no desktop theme to read and no settings file we could ask:
+    // stay dark, which is what the phone UI uses anyway.
     systemDark = await _detectSystemDark();
     final raw = await _settingsFile.exists() ? await _settingsFile.readAsString() : null;
     if (raw != null) settings = AranSettings.tryParse(raw) ?? settings;
@@ -109,35 +124,32 @@ class AppState extends ChangeNotifier {
 
     profiles = ProfileStore(dataDir);
     await profiles.load();
-    final embedded = Bundled.bundledPath('mihomo') != null;
-    _managedKernel = await Bundled.extract('mihomo', dataDir) ?? Bundled.existing('mihomo', dataDir);
-    _embeddedKernel = embedded && _managedKernel != null;
-    if (_managedKernel != null) {
-      _log(_embeddedKernel ? '使用内嵌内核：$_managedKernel' : '使用已下载内核：$_managedKernel');
-    }
+    // Desktop only: on Android the core is linked into the process, so there is
+    // no asset to extract and no binary to resolve.
 
     notifier = Notifier(enabled: settings.notifyEnabled, onLog: _log);
     _startAutoUpdate();
     smartdns = SmartDns(dataDir: dataDir, onLog: _log);
-    kernel = KernelManager(
-      binary: resolveKernel(),
-      dataDir: dataDir,
-      onLog: _log,
-    );
-    // Keep the autostart entry in sync with the setting (it may have been
-    // removed by a system update or the file moved).
-    _autoStartCached = await platform.autoStartEnabled();
-    if (settings.autoStart != _autoStartCached) {
-      await setAutoStart(settings.autoStart);
+    kernel = KernelManager(binary: resolveKernel(), dataDir: dataDir, onLog: _log);
+    {
+      // Keep the autostart entry in sync with the setting (it may have been
+      // removed by a system update or the file moved). Android's boot receiver
+      // is driven from the settings switch instead.
+      _autoStartCached = await platform.autoStartEnabled();
+      if (settings.autoStart != _autoStartCached) {
+        await setAutoStart(settings.autoStart);
+      }
     }
 
     _startServicePolling();
     unawaited(refreshServiceInfo());
 
-    // Restore the previous power state: a client that forgets it was on is annoying.
+    // Restore the previous power state — desktop only. On Android this would pop
+    // the VPN up just because the user opened the app (docs/ANDROID.md 决策 #4:
+    // the user decides when the tunnel comes up).
     if (profiles.active != null) {
       unawaited(startProxy());
-    } else {
+    } else if (profiles.active == null) {
       // No profile means no proxy to start, but a desktop proxy left pointing at
       // a stale port is worse than none — reconcile it with the run mode.
       unawaited(_reconcileDesktopProxy());
@@ -740,6 +752,7 @@ class AppState extends ChangeNotifier {
         settings.groupPrefs,
       );
       engine!.setGroupModes(settings.groupModes);
+      engine!.setPowerMode(powerMode);
       await engine!.start();
       await _refreshSystemProxy();
       await _reconcileDesktopProxy();
@@ -1408,12 +1421,78 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> addProfileFromUrl(String url, {String? name}) async {
+  /// Import from text we already have (SAF file, QR code). Mirrors
+  /// [addProfileFromUrl] so the UI gets the same busy flag, error and log line —
+  /// the SAF/QR paths used to call ProfileStore directly and showed nothing.
+  Future<void> addProfileFromText(String text, {String? name}) async {
     busy = true;
     error = null;
     notifyListeners();
     try {
-      final p = await profiles.addFromUrl(url, name: name);
+      final p = await profiles.addFromText(text, name: name);
+      if (proxyRunning && profiles.activeId == p.id) await _reloadOrRestart();
+      _log('已导入配置：${p.name}（${(p.bytes / 1024).toStringAsFixed(0)} KB）');
+    } catch (e) {
+      error = '$e';
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Runs [direct] or [viaProxy] according to `settings.fetchViaProxy`.
+  /// Whatever the setting, a failed proxy attempt falls back to direct: the goal
+  /// is to get the subscription, not to be doctrinaire about the route.
+  Future<T> _fetchWithPolicy<T>(
+    Future<T> Function() direct,
+    Future<T> Function(String addr) viaProxy,
+    String label, {
+    bool preferProxy = false,
+  }) async {
+    final proxy = _proxyAddrForFetch;
+    final policy = preferProxy ? 'always' : settings.fetchViaProxy;
+    if (policy == 'always' && proxy != null) {
+      try {
+        return await viaProxy(proxy);
+      } catch (e) {
+        _log('$label：经代理失败（$e），改直连重试');
+        return await direct();
+      }
+    }
+    try {
+      return await direct();
+    } catch (e) {
+      if (policy == 'never' || proxy == null) rethrow;
+      _log('$label：直连失败（$e），改走当前代理重试');
+      return await viaProxy(proxy);
+    }
+  }
+
+  /// Port of the running kernel, used to retry subscription downloads that the
+  /// direct route cannot reach. Aran's own traffic bypasses the tunnel (that is
+  /// how loop avoidance works on Android), so without this an airport panel that
+  /// is blocked or geo-fenced simply cannot be fetched.
+  String? get _proxyAddrForFetch {
+    if (!proxyRunning) return null;
+    final port = kernel.activePorts['mixed'] ?? kernel.activePorts['http'];
+    if (port == null || port == 0) return null;
+    return '127.0.0.1:$port';
+  }
+
+  Future<void> addProfileFromUrl(String url, {String? name, bool viaProxy = false}) async {
+    busy = true;
+    error = null;
+    notifyListeners();
+    try {
+      final proxy = viaProxy ? _proxyAddrForFetch : null;
+      final p = proxy != null
+          // "通过代理导入" ticked in the dialog: honour it even if the global
+          // policy says auto, and still fall back to direct if the proxy fails.
+          ? await _fetchWithPolicy(() => profiles.addFromUrl(url, name: name),
+              (addr) => profiles.addFromUrl(url, name: name, proxyAddress: addr), '拉取订阅',
+              preferProxy: true)
+          : await _fetchWithPolicy(() => profiles.addFromUrl(url, name: name),
+              (addr) => profiles.addFromUrl(url, name: name, proxyAddress: addr), '拉取订阅');
       if (proxyRunning && profiles.activeId == p.id) await _reloadOrRestart();
       _log('已导入配置：${p.name}（${(p.bytes / 1024).toStringAsFixed(0)} KB）');
     } catch (e) {
@@ -1482,8 +1561,16 @@ class AppState extends ChangeNotifier {
     busy = true;
     notifyListeners();
     try {
-      final addr = viaProxy ? '127.0.0.1:${kernel.activePorts['mixed'] ?? kernel.activePorts['http'] ?? 0}' : null;
-      await profiles.update(id, proxyAddress: viaProxy ? addr : null);
+      if (viaProxy) {
+        // The ⋯ menu's explicit "更新（通过代理）" wins over the global policy.
+        await profiles.update(id, proxyAddress: _proxyAddrForFetch);
+      } else {
+        await _fetchWithPolicy<void>(
+          () => profiles.update(id),
+          (addr) => profiles.update(id, proxyAddress: addr),
+          '更新订阅',
+        );
+      }
       if (proxyRunning && profiles.active?.id == id) await _reloadOrRestart();
       _log('订阅已更新');
     } catch (e) {

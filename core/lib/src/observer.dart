@@ -21,6 +21,17 @@ class Observer {
   /// Total bytes seen since start (monotonic).
   int totalBytes = 0;
 
+  /// Upload / download split, so the notification can show both directions.
+  int upBytes = 0;
+  int downBytes = 0;
+
+  /// MB/s over the last sample interval (0 when idle).
+  double upRateMbps = 0;
+  double downRateMbps = 0;
+
+  int _prevUp = 0;
+  int _prevDown = 0;
+
   /// Active connection count per node.
   final Map<String, int> activePerNode = {};
 
@@ -35,6 +46,8 @@ class Observer {
     }
 
     final seen = <String, int>{};
+    var upTotal = 0;
+    var downTotal = 0;
     final deltaPerNode = <String, int>{};
     final active = <String, int>{};
     final nowAt = now;
@@ -53,7 +66,11 @@ class Observer {
       if (nodeName == null) continue;
 
       final id = (raw['id'] as String?) ?? raw['start']?.toString() ?? nodeName;
-      final bytes = ((raw['upload'] as num?)?.toInt() ?? 0) + ((raw['download'] as num?)?.toInt() ?? 0);
+      final up = (raw['upload'] as num?)?.toInt() ?? 0;
+      final down = (raw['download'] as num?)?.toInt() ?? 0;
+      upTotal += up;
+      downTotal += down;
+      final bytes = up + down;
       seen[id] = bytes;
       active[nodeName] = (active[nodeName] ?? 0) + 1;
 
@@ -86,6 +103,18 @@ class Observer {
 
     totalBytes += deltaTotal;
     activity = deltaTotal > 0;
+
+    // Up/down for the notification. /connections only lists live sockets, so
+    // these are deltas over live connections — a short-lived connection's tail is
+    // lost, same caveat as totalBytes (README「被动观测的坑」).
+    upBytes = upTotal;
+    downBytes = downTotal;
+    if (secs > 0.2) {
+      upRateMbps = ((upTotal - _prevUp).clamp(0, 1 << 40)) / 1e6 / secs;
+      downRateMbps = ((downTotal - _prevDown).clamp(0, 1 << 40)) / 1e6 / secs;
+    }
+    _prevUp = upTotal;
+    _prevDown = downTotal;
     _prevAt = nowAt;
   }
 

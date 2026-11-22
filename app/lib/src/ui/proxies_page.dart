@@ -100,40 +100,56 @@ class _ProxiesPageState extends State<ProxiesPage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: line, width: borderWidth))),
-      child: Row(children: [
-        SizedBox(
-          width: 260,
-          height: 32,
-          child: TextField(
-            onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-            style: mono.copyWith(fontSize: 12),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: '搜索节点…',
-              hintStyle: mono.copyWith(fontSize: 12, color: dim),
-              prefixIcon: Icon(Icons.search, size: 15, color: dim),
-              prefixIconConstraints: const BoxConstraints(minWidth: 32),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: line, width: borderWidth),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Btn(
-          label: _onlyReachable ? '仅显示可用' : '显示全部',
-          small: true,
-          filled: _onlyReachable,
-          onTap: () => setState(() => _onlyReachable = !_onlyReachable),
-        ),
-        const Spacer(),
-        Text('共 ${_proxies.length} 个节点 / ${_groupTypes.length} 类组',
-            style: mono.copyWith(fontSize: 11, color: dim)),
-      ]),
+      child: _header(context),
     );
+  }
+
+  /// Search + filter + count. On a phone this cannot be one Row: the fixed 260 px
+  /// search box leaves nothing for the buttons, and the Row clips the last child.
+  Widget _header(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final search = TextField(
+      onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+      style: mono.copyWith(fontSize: 12),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: '搜索节点…',
+        hintStyle: mono.copyWith(fontSize: 12, color: dim),
+        prefixIcon: Icon(Icons.search, size: 15, color: dim),
+        prefixIconConstraints: const BoxConstraints(minWidth: 32),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radius),
+          borderSide: BorderSide(color: line, width: borderWidth),
+        ),
+      ),
+    );
+    final filter = Btn(
+      label: _onlyReachable ? '仅显示可用' : '显示全部',
+      small: true,
+      filled: _onlyReachable,
+      onTap: () => setState(() => _onlyReachable = !_onlyReachable),
+    );
+    final count = Text('共 ${_proxies.length} 个节点 / ${_groupTypes.length} 类组',
+        style: mono.copyWith(fontSize: 11, color: dim));
+    if (narrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 34, child: search),
+          const SizedBox(height: 8),
+          Row(children: [filter, const SizedBox(width: 10), Expanded(child: count)]),
+        ],
+      );
+    }
+    return Row(children: [
+      SizedBox(width: 260, height: 32, child: search),
+      const SizedBox(width: 12),
+      filter,
+      const Spacer(),
+      count,
+    ]);
   }
 
   Widget _groupCard(String name, Map group) {
@@ -170,37 +186,53 @@ class _ProxiesPageState extends State<ProxiesPage> {
           InkWell(
             onTap: () => setState(() => expanded ? _expanded.remove(name) : _expanded.add(name)),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-              child: Row(children: [
-                Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: dim),
-                const SizedBox(width: 6),
-                Text(name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: text)),
-                const SizedBox(width: 8),
-                _tag(isAuto ? group['type'] as String : 'select', dim),
-                const SizedBox(width: 5),
-                if (aranDriven)
-                  _tag(s.takeover ? 'Aran 自动切换' : 'Aran 仅建议', s.takeover ? amber : blue)
-                else
-                  _tag('不由 Aran 管理', dim),
-                const SizedBox(width: 12),
-                if (now != null)
-                  Flexible(
-                    child: Text(now, style: mono.copyWith(fontSize: 11.5, color: blue), overflow: TextOverflow.ellipsis),
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: dim),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: text)),
+                    ),
+                    const SizedBox(width: 8),
+                    _tag(isAuto ? group['type'] as String : 'select', dim),
+                    const SizedBox(width: 5),
+                    Text('${visible.length}/${nodes.length}', style: mono.copyWith(fontSize: 11, color: dim)),
+                  ]),
+                  const SizedBox(height: 6),
+                  // Controls get their own line on phones instead of being clipped
+                  // off the right edge of a single Row.
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (aranDriven)
+                        _tag(s.takeover ? 'Aran 自动切换' : 'Aran 仅建议', s.takeover ? amber : blue)
+                      else
+                        _tag('不由 Aran 管理', dim),
+                      if (now != null)
+                        Text(now,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: mono.copyWith(fontSize: 11.5, color: blue)),
+                      _modeDropdown(name),
+                      _prefDropdown(name),
+                      Btn(
+                        label: _testing == name ? '测速中…' : '测速',
+                        icon: Icons.speed,
+                        small: true,
+                        onTap: _testing == null ? () => _testGroup(name) : null,
+                      ),
+                    ],
                   ),
-                const SizedBox(width: 8),
-                Text('${visible.length}/${nodes.length}', style: mono.copyWith(fontSize: 11, color: dim)),
-                const SizedBox(width: 10),
-                _modeDropdown(name),
-                const SizedBox(width: 6),
-                _prefDropdown(name),
-                const SizedBox(width: 8),
-                Btn(
-                  label: _testing == name ? '测速中…' : '测速',
-                  icon: Icons.speed,
-                  small: true,
-                  onTap: _testing == null ? () => _testGroup(name) : null,
-                ),
-              ]),
+                ],
+              ),
             ),
           ),
           if (expanded) ...[

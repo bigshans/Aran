@@ -65,16 +65,19 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       children: [
         Container(
           padding: const EdgeInsets.fromLTRB(_pad, 14, _pad, 8),
-          child: Row(children: [
-            Text('活动连接', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: text)),
-            const SizedBox(width: 10),
-            Text('${_conns.length} 条 · 每秒刷新', style: mono.copyWith(color: dim, fontSize: 11)),
-            const SizedBox(width: 14),
-            Text('累计 ↑ ${fmtBytes(_upTotal)}  ↓ ${fmtBytes(_downTotal)}',
-                style: mono.copyWith(color: dim, fontSize: 11)),
-          ]),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('活动连接', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: text)),
+              Text('${_conns.length} 条 · 每秒刷新', style: mono.copyWith(color: dim, fontSize: 11)),
+              Text('累计 ↑ ${fmtBytes(_upTotal)}  ↓ ${fmtBytes(_downTotal)}',
+                  style: mono.copyWith(color: dim, fontSize: 11)),
+            ],
+          ),
         ),
-        _header(),
+        if (!_narrow(context)) _header(),
         Expanded(
           child: _conns.isEmpty
               ? Center(
@@ -97,10 +100,72 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 )
               : ListView.builder(
                   itemCount: _conns.length,
-                  itemBuilder: (context, i) => _row(_conns[i] as Map),
+                  itemBuilder: (context, i) => _narrow(context)
+                      ? _card(_conns[i] as Map)
+                      : _row(_conns[i] as Map),
                 ),
         ),
       ],
+    );
+  }
+
+  bool _narrow(BuildContext context) => MediaQuery.sizeOf(context).width < 600;
+
+  /// Phone layout: eight columns cannot fit; one connection becomes a small card
+  /// with the destination on top and the numbers underneath.
+  Widget _card(Map c) {
+    final meta = (c['metadata'] as Map?) ?? const {};
+    final host = (meta['host'] as String?)?.isNotEmpty == true
+        ? meta['host'] as String
+        : '${meta['destinationIP'] ?? '?'}:${meta['destinationPort'] ?? ''}';
+    final rule = c['rule'] == null ? '—' : '${c['rule']}(${c['rulePayload'] ?? ''})';
+    final chains = (c['chains'] as List?)?.cast<String>() ?? const <String>[];
+    final up = (c['upload'] as num?)?.toInt() ?? 0;
+    final down = (c['download'] as num?)?.toInt() ?? 0;
+    final start = DateTime.tryParse(c['start'] as String? ?? '');
+    final dur = start == null ? '' : _dur(DateTime.now().difference(start));
+    return Container(
+      margin: const EdgeInsets.fromLTRB(_pad, 0, _pad, 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(radius + 1),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(host,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: mono.copyWith(fontSize: 12, color: text)),
+            ),
+            InkWell(
+              onTap: () => s.closeConnection(c['id'] as String),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(Icons.close, size: 15, color: red),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(chains.isEmpty ? '直连' : chains.reversed.join(' → '),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: mono.copyWith(fontSize: 11, color: blue)),
+          const SizedBox(height: 4),
+          Text(
+            [
+              rule,
+              if (_process(meta) != '—') _process(meta),
+              '↑${_bytes(up)}',
+              '↓${_bytes(down)}',
+              if (dur.isNotEmpty) dur,
+            ].join('  ·  '),
+            style: mono.copyWith(fontSize: 10.5, color: dim),
+          ),
+        ],
+      ),
     );
   }
 
