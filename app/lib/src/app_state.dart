@@ -248,6 +248,9 @@ class AppState extends ChangeNotifier {
 
   bool get systemdKernel => serviceMode && !directKernel;
 
+  /// 用户点过「直接启动内核」——只有这种显式选择才不交给 supervisor。
+  bool _directRequested = false;
+
   bool get serviceUnitInstalled => platform.serviceInstalled();
   bool get _externalKernel => serviceMode;
 
@@ -388,6 +391,13 @@ class AppState extends ChangeNotifier {
     busy = true;
     notifyListeners();
     try {
+      // A transient failure used to latch `directKernel` for the whole session,
+      // so the UI claimed "service" while the GUI quietly owned the process.
+      // Only an explicit "直接启动内核" keeps us off the supervisor.
+      if (serviceMode && serviceUnitInstalled && directKernel && !_directRequested) {
+        directKernel = false;
+        _log('服务可用，重新交给 supervisor 接管');
+      }
       if (systemdKernel && serviceUnitInstalled) {
         _notice('正在重启 systemd 内核…');
         final wasRunning = proxyRunning;
@@ -527,6 +537,7 @@ class AppState extends ChangeNotifier {
   /// Spawn mihomo from the GUI regardless of the configured mode — the
   /// lightweight path for people who don't want systemd involved.
   Future<void> startKernelDirect() async {
+    _directRequested = true;
     directKernel = true;
     await startProxy();
   }

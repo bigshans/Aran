@@ -161,6 +161,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         items: const ['user', 'system'],
                         onChanged: (v) => _update(_draft.copyWith(serviceScope: v)),
                       )),
+                  if (s.serviceMode && s.directKernel)
+                    _row('服务未接管',
+                        '当前由 Aran 直接拉起内核（关窗口即停）。点「启动」会重新交给 systemd',
+                        const SizedBox.shrink()),
                   _row('服务', _serviceDescribe(), Row(mainAxisSize: MainAxisSize.min, children: [
                     _servicePrimaryButton(),
                     const SizedBox(width: 8),
