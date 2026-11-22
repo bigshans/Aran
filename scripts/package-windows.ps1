@@ -52,6 +52,32 @@ if ($SmartDns) {
   Write-Host ("    内嵌 SmartDNS: {0} ({1:N0} KB)" -f $SmartDns, ((Get-Item $SmartDns).Length / 1KB))
 }
 
+# 干净的 Windows（LTSC/Server）不自带 VC++ 运行库，缺 VC 运行库时 exe 直接
+# 0xC0000135 退出。把运行库一起塞进便携包，做到解压即跑。
+$redistDirs = @(
+  "$env:VCToolsRedistDir\x64\Microsoft.VC143.CRT",
+  "$env:VCINSTALLDIR\Redist\MSVC\*\x64\Microsoft.VC143.CRT"
+)
+$redist = $null
+foreach ($d in $redistDirs) {
+  $hit = Get-Item $d -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($hit) { $redist = $hit.FullName; break }
+}
+if (-not $redist) {
+  $vsRoot = "C:\Program Files\Microsoft Visual Studio"
+  $redist = Get-ChildItem "$vsRoot\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+}
+if ($redist) {
+  foreach ($dll in @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','concrt140.dll')) {
+    $src = Join-Path $redist $dll
+    if (Test-Path $src) { Copy-Item $src "$bundle\$dll" -Force }
+  }
+  Write-Host "    已附带 VC++ 运行库（可解压即跑）"
+} else {
+  Write-Warning "未找到 VC++ 运行库（VCToolsRedistDir），便携包在干净系统上需先装 vc_redist.x64.exe"
+}
+
 if ($Kernel -or $SmartDns) {
   # Rebuild so the assets end up in the bundle.
   Push-Location app

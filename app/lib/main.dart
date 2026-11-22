@@ -82,6 +82,14 @@ Future<void> main() async {
     // Make sure nothing left the window locked to a fixed size.
     await windowManager.setResizable(true);
     await windowManager.setMinimumSize(const Size(820, 520));
+    // Windows sometimes maps the window at a stale or absurd geometry (it can
+    // end up as a 90 px sliver on the right edge of the screen), which makes the
+    // whole layout collapse. Clamp to a sane size and re-centre.
+    final bounds = await windowManager.getBounds();
+    if (bounds.width < 700 || bounds.height < 400) {
+      await windowManager.setSize(const Size(1280, 800));
+      await windowManager.setAlignment(Alignment.center);
+    }
   });
 
   // Never leave an orphan kernel behind when the window is closed with a signal.
