@@ -94,9 +94,54 @@ jobs:
           path: dist\aran-*-windows-x64*
           if-no-files-found: error
 
+  arch:
+    needs: [linux]
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 基础工具
+        run: |
+          pacman -Syu --noconfirm --needed base-devel zstd binutils
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: dist
+
+      - name: 构建 aran-bin（makepkg 不能以 root 运行）
+        run: |
+          set -euo pipefail
+          VER=$(sed -n 's/^version: *\(.*\)/\1/p' app/pubspec.yaml | head -1)
+          echo "版本 $VER"
+          useradd -m builder 2>/dev/null || true
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          install -d -o builder -g builder /tmp/pb
+          cp packaging/arch/PKGBUILD /tmp/pb/
+          cp packaging/polkit/50-aran-kernel.rules /tmp/pb/
+          cp "dist/aran-${VER}-linux-x64.tar.gz" "/tmp/pb/aran-${VER}.tar.gz"
+          chown -R builder:builder /tmp/pb
+          su builder -c "cd /tmp/pb && PKGEXT='.pkg.tar.zst' makepkg -f --nodeps --noconfirm"
+          mkdir -p dist
+          cp /tmp/pb/*.pkg.tar.zst dist/
+          ls -l dist/*.pkg.tar.zst
+
+      - name: 校验包内关键文件
+        run: |
+          PKG=$(ls dist/*.pkg.tar.zst | head -1)
+          pacman -S --noconfirm --needed libarchive >/dev/null
+          bsdtar -tf "$PKG" | grep -E 'opt/aran/aran_app|polkit-1/rules.d|flutter_assets/assets/bin/mihomo'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-x64
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows]
+    needs: [linux, windows, arch]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -108,8 +153,8 @@ jobs:
       - name: 汇总校验和
         run: |
           cd artifacts
-          find . -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' \) -exec cp {} . \;
-          find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' \) -print0 \
+          find . -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' -o -name '*.pkg.tar.zst' \) -exec cp {} . \;
+          find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' -o -name '*.pkg.tar.zst' \) -print0 \
             | xargs -0 sha256sum > SHA256SUMS
           cat SHA256SUMS
 
@@ -119,5 +164,6 @@ jobs:
             artifacts/*.tar.gz
             artifacts/*.zip
             artifacts/*.exe
+            artifacts/*.pkg.tar.zst
             artifacts/SHA256SUMS
           generate_release_notes: true
