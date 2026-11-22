@@ -93,11 +93,15 @@ Future<void> main() async {
   });
 
   // Never leave an orphan kernel behind when the window is closed with a signal.
-  for (final sig in [ProcessSignal.sigterm, ProcessSignal.sigint]) {
-    sig.watch().listen((_) async {
-      await state.stopProxy();
-      exit(0);
-    });
+  // Windows has no POSIX signals: watching SIGTERM throws OS Error 50 and takes
+  // the whole app down, so this is POSIX-only.
+  if (!Platform.isWindows) {
+    for (final sig in [ProcessSignal.sigterm, ProcessSignal.sigint]) {
+      sig.watch().listen((_) async {
+        await state.stopProxy();
+        exit(0);
+      });
+    }
   }
 
   runApp(AranApp(state: state));
