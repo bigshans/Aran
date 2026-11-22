@@ -1,0 +1,25 @@
+Aran — proxy scheduler UI on top of mihomo
+
+Copyright (C) 2026 Aran contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+Bundled components, when present:
+
+  * mihomo (https://github.com/MetaCubeX/mihomo) — GPL-3.0.  Only included in
+    builds made with `scripts/build-app.sh --kernel <path>` or
+    `--embedded`; such builds are distributed under GPL-3.0 as a whole.
+  * smartdns (https://github.com/pymumu/smartdns) — GPL-3.0.
+  * Flutter engine and Material icons — BSD-3-Clause (see NOTICES in the build).

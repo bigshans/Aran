@@ -1,0 +1,16 @@
+[Unit]
+Description=Aran proxy kernel (mihomo)
+Documentation=https://github.com/MetaCubeX/mihomo
+After=network-pre.target
+Wants=network-pre.target
+Before=network.target
+
+[Service]
+Type=simple
+ExecStart=@KERNEL@ -d @DATADIR@
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

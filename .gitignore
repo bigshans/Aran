@@ -1,0 +1,35 @@
+# 构建产物
+dist/
+app/build/
+packaging/arch/*.pkg.tar.*
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.tar.gz
+
+# Flutter / Dart
+.dart_tool/
+.packages
+app/.dart_tool/
+app/linux/flutter/ephemeral/
+app/flutter_export_environment.sh
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/linux/flutter/generated_*
+
+# 内核二进制：绝不入库（体积 + GPL 分发纪律），用 scripts/build-app.sh --kernel 现打
+app/assets/bin/mihomo
+app/assets/bin/mihomo.exe
+app/assets/bin/smartdns
+app/assets/bin/smartdns.exe
+
+# 运行时数据（正常应在 ~/.local/share/aran，便携模式会出现在树里）
+.data/
+aran-data/
+*.log
+
+# 编辑器 / 系统
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+name="aran-kernel"
+description="Aran proxy kernel (mihomo)"
+
+command="@KERNEL@"
+command_args="-d @DATADIR@"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+
+depend() {
+  need net
+  after firewall
+}

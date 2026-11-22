@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Transparent background, no tile, no rule: just the letterform, so it works
+       on any panel colour and at 22px in the header. -->
+  <g fill="#D0342C" stroke="#D0342C" stroke-width="20" stroke-linejoin="round">
+    <polygon points="247,110 287,110 205,400 121,400"/>
+    <polygon points="247,110 287,110 391,400 307,400"/>
+    <polygon points="180,316 332,316 332,364 180,364"/>
+  </g>
+</svg>

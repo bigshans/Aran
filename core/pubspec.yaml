@@ -1,0 +1,10 @@
+name: aran_core
+description: Aran proxy scheduler core — decision + explanation layer on top of mihomo.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+executables:
+  shadow:
