@@ -20,7 +20,8 @@ Aran 是一个**能用的客户端**，不只是看板：
 | 调度 | 分层探测、被动吞吐、可解释评分、判死/阈值/冷却、审计 | ✅ |
 | TUN | 需要特权 helper（systemd + CAP_NET_ADMIN） | ⬜ |
 | 看门狗 | Aran 崩溃后回落内核 `url-test` | ⬜ |
-| Windows / Android | — | ⬜ 未验证 |
+| Windows | 服务模式、注册表代理、wintun，见 [docs/WINDOWS.md](docs/WINDOWS.md) | ⬜ 未在真机验证 |
+| Android | 设计已定（进程内 kernel + VpnService），见 [docs/ANDROID.md](docs/ANDROID.md) | ⬜ 未开工 |
 
 ## 跑起来
 

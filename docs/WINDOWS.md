@@ -32,7 +32,39 @@ Windows 没有 setcap 等价物，TUN 必须在提权进程里跑。
 schtasks /query /tn AranKernel /fo LIST /v
 ```
 
-## 打包（在 Windows 主机上）
+
+## 真机验证记录（Windows 10 Enterprise LTSC / 6 vCPU / 8GB）
+
+在 libvirt 虚拟机（`192.168.122.59`，用户 `aerian`）上实测，已确认可用：
+
+```
+aran_app.exe + mihomo.exe 双进程运行
+7890 监听，curl -x 127.0.0.1:7890 https://github.com  =>  200
+系统代理  HKCU\...\Internet Settings  ProxyEnable=1  ProxyServer=127.0.0.1:7890
+状态页正常：节点评分、排行榜、决策时间线、预热统计
+smartdns-rs 0.13.1 直接吃我们生成的 smartdns.conf，UDP 监听正常
+```
+
+### 只有 Windows 才会暴露的 5 个问题（均已修）
+
+| # | 现象 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | 进程秒退，事件日志 `0xC0000135` | 干净 LTSC 不带 VC++ 运行库 | 便携包附带 `vcruntime140/140_1/msvcp140`（合计 716KB） |
+| 2 | 窗口只有几十像素宽，布局全塌 | window_manager 残留异常 bounds | 启动后 bounds < 700×400 则重设 1280×800 并居中 |
+| 3 | `SignalException: osError 50` 直接 abort | Windows 无 POSIX 信号，`sigterm.watch()` 抛异常 | 仅在非 Windows 平台注册信号处理 |
+| 4 | `PathAccessException: './.local'` EACCES | Windows 上 `HOME` 未定义，硬编码 `$home/.local` 变相对路径 | 审计日志/数据目录改用 `platform.dataDir`，SMARTDNS 回退用 `LOCALAPPDATA`/`USERPROFILE` |
+| 5 | 服务模式永远装不上，静默降级直连 | `if (systemdKernel && serviceUnitInstalled)` 而"未安装则安装"的逻辑在 `_startServiceKernel` 内部，形成死循环 | 判定只看 `systemdKernel`，安装交给 `_startServiceKernel` 兜底 |
+
+另外发现：PowerShell 5.1 的 `Set-Content -Encoding UTF8` 会写 BOM，Dart 的 `jsonDecode`
+直接失败并回落默认设置 —— 手工改设置请用无 BOM 的 UTF-8。
+
+### 尚未验证
+
+- 服务模式端到端（`schtasks` 任务创建 → 内核由任务拉起 → 无 UAC 启停）
+- TUN（需 `wintun.dll` + 管理员令牌；用户级任务按设计不支持）
+- 托盘（`tray_manager` 在 Windows 上的行为）
+
+## 打包（在 GitHub Actions 上）
 
 ```powershell
 # 便携版 ZIP（默认不含内核）

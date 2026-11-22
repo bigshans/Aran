@@ -23,6 +23,20 @@
 | 15 | 客户端形态 | Aran 拥有 mihomo 生命周期；配置由订阅生成；组改写为 `select` 后必须先校验初始选择 |
 | 14 | UI | 诊断优先，零动效：状态 → 排行榜（含「为什么不是它」）→ 决策时间线 → 规则推演 → 热力图 |
 
+## 平台差异：Android
+
+上表是桌面（Linux/Windows）的形状。Android 上有几处结论不同，因为前提变了——详见
+[docs/ANDROID.md](docs/ANDROID.md)。
+
+| # | 桌面上 | Android 上 | 为什么 |
+|---|---|---|---|
+| 3 | mihomo 子进程，Aran 是父进程 | **进程内**（gomobile `libclash.so` + JNI） | TUN 的 fd 是进程局部的；mihomo 只接受 `tun.file-descriptor`，没有 SCM_RIGHTS 收 fd 的通道 |
+| 4 | TUN 靠 root 特权（CAP_NET_ADMIN） | `VpnService`，**不需要 root**；路由/DNS 由 Kotlin 的 `Builder` 配 | Android 的 TUN 不是权限问题，是框架能力 |
+| 6 | 30s 心跳丢失 → 回落 `url-test` | 进程消失或 **5 分钟**无心跳 → PUT 一次 `aran-fallback` 组 | Doze 下 30s 静默是常态而非异常 |
+| 8/9 | 分层探测 10s/60s/10min，实际是主动探测为主 | 灭屏或无真实流量时只留当前节点 5 分钟心跳，**被动观测为主** | 桌面上 CPU 是免费的，手机上一次探测就是一次无线电唤醒 |
+
+其余决策在两端一致：组改写为 `select`、Aran 独占、评分与阈值不分叉、配置由订阅生成。
+
 ## 分层
 
 ```
@@ -40,6 +54,7 @@ bin/shadow.dart       旁观模式 CLI：只建议，不 PUT
 ```
 service/              root 特权服务（起 mihomo + TUN + 心跳看门狗）
 app/                  Flutter UI（复用 core/）
+app/android/          Android 平台层（VpnService + libclash.so，内核在进程内；见 docs/ANDROID.md）
 ```
 
 ## 评分（全部可解释）
