@@ -13,14 +13,27 @@ import 'dart:io';
 ///
 /// If the binary is missing the module simply stays off; nothing else breaks.
 class SmartDns {
+  /// Discovered from PATH + the usual bin dirs; never a fixed absolute list.
   static List<String> get candidates {
     final home = Platform.environment['HOME'] ?? '.';
-    return [
-      '/usr/bin/smartdns',
-      '/usr/local/bin/smartdns',
-      '/usr/sbin/smartdns',
-      '$home/.local/bin/smartdns',
-    ];
+    final exe = Platform.isWindows ? 'smartdns.exe' : 'smartdns';
+    final sep = Platform.isWindows ? ';' : ':';
+    final dirs = <String>{
+      ...(Platform.environment['PATH'] ?? '').split(sep).where((d) => d.isNotEmpty),
+      '$_localData/bin',
+      '$home/.local/bin',
+      '/usr/bin',
+      '/usr/local/bin',
+      '/usr/sbin',
+    };
+    return [for (final d in dirs) '$d/$exe'];
+  }
+
+  static String get _localData {
+    final local = Platform.environment['LOCALAPPDATA'];
+    if (local != null) return '$local\\Aran';
+    final home = Platform.environment['HOME'] ?? '.';
+    return '$home/.local/share/aran';
   }
 
   final Directory dataDir;

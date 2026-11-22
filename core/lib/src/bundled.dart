@@ -2,14 +2,15 @@ import 'dart:io';
 
 import 'platform/factory.dart';
 
-/// Kernels owned by the user (downloaded on demand into the data directory).
-/// Nothing is shipped inside the app bundle: distro packaging and GPL licensing
-/// both prefer that the binary stays outside the application package.
+/// Kernel binaries, in two shapes:
 ///
-/// Relying on whatever `mihomo` happens to be in PATH makes Aran fragile on
-/// machines that don't have it (or have a 3-year-old build). The app therefore
-/// supports a bundled copy under `assets/bin/`, extracted once into the data
-/// directory and preferred over the system binary.
+///  * **内嵌内核** — shipped inside the app package at `assets/bin/<name>[.exe]`
+///    (built with `scripts/build-app.sh --kernel …`). Extracted once into the
+///    data dir so it can be executed and upgraded independently of the package.
+///  * **已下载内核** — fetched at runtime into `<data>/bin/<name>`.
+///
+/// A third source is the system binary found by the platform adapter, used when
+/// neither of the above exists.
 class Bundled {
   /// Directory the Flutter bundle keeps its assets in.
   static Directory get assetsDir =>
@@ -27,16 +28,38 @@ class Bundled {
   static Future<String?> extract(String name, Directory dataDir) async {
     final source = File('${assetsDir.path}/bin/$name$_exeName');
     if (!await source.exists()) return null;
+
     final target = File(managedPath(name, dataDir));
-    await target.parent.create(recursive: true);
-    final stale = !await target.exists() ||
-        await target.length() != await source.length() ||
-        (await target.lastModified()).isBefore(await source.lastModified());
-    if (stale) {
-      await source.copy(target.path);
-      await createPlatform().makeExecutable(target.path);
+    try {
+      await target.parent.create(recursive: true);
+      final stale = !await target.exists() ||
+          await target.length() != await source.length() ||
+          (await target.lastModified()).isBefore(await source.lastModified());
+      if (stale) {
+        await source.copy(target.path);
+        await createPlatform().makeExecutable(target.path);
+      }
+      // The copy must actually be runnable; if not, fall through to the asset
+      // (read-only data dir, noexec mount, wrong permissions after upgrade).
+      if (await _runnable(target.path)) return target.path;
+    } catch (_) {
+      // Extraction failed (read-only $HOME, full disk, noexec tmpfs …).
     }
-    return target.path;
+    return await _runnable(source.path) ? source.path : target.path;
+  }
+
+  /// Cheap check: file exists and can be spawned at all.
+  static Future<bool> _runnable(String path) async {
+    final f = File(path);
+    if (!await f.exists()) return false;
+    try {
+      final r = await Process.run(path, ['-v'], stdoutEncoding: null, stderrEncoding: null);
+      // Any exit code is fine: mihomo -v returns 0, but we only care that the
+      // kernel actually started (an EACCES/EACCES shows up as exitCode -1/126).
+      return r.exitCode != 126 && r.exitCode != 127;
+    } catch (_) {
+      return false;
+    }
   }
 
   static String? bundledPath(String name) {

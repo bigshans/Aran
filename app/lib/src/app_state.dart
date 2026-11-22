@@ -1166,6 +1166,10 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// True when this build embeds service templates (内嵌服务文件).
+  bool get serviceTemplatesEmbedded =>
+      ServiceUnit(kernelPath: kernel.binaryPath, dataDir: dataDir.path).hasEmbeddedTemplates;
+
   Future<void> setAccentColor(String hex) async {
     settings = settings.copyWith(accentColor: hex.trim());
     await _writeSettings();

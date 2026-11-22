@@ -150,6 +150,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   _row('服务端口', 'systemd 单元无法向 GUI 询问端口，所以服务模式需固定端口',
                       _text('servicePort', width: 110)),
                   _row('服务状态', _serviceDescribe(), _serviceBadge()),
+                  _row('服务文件',
+                      s.serviceTemplatesEmbedded ? '内嵌模板（systemd / OpenRC / runit），安装时填充路径' : '运行时生成',
+                      Btn(
+                        label: '手动命令',
+                        small: true,
+                        color: dim,
+                        onTap: () => _showManualInstall(context),
+                      )),
                   _row('systemd 服务', '安装 / 重启需要一次 polkit 授权',
                       Row(mainAxisSize: MainAxisSize.min, children: [
                         Btn(
