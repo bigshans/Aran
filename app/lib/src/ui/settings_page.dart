@@ -149,6 +149,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (_draft.runMode == 'service' && s.supportsSystemService) ...[
                   _row('服务端口', 'systemd 单元无法向 GUI 询问端口，所以服务模式需固定端口',
                       _text('servicePort', width: 110)),
+                  _row('服务范围',
+                      _draft.serviceScope == 'user'
+                          ? '当前用户（systemctl --user）：不需要 root，重启内核不会弹密码'
+                          : '系统级（/etc/systemd/system）：每次操作都要提权，需要 polkit/sudo',
+                      _dropdown(
+                        value: _draft.serviceScope,
+                        width: 130,
+                        items: const ['user', 'system'],
+                        onChanged: (v) => _update(_draft.copyWith(serviceScope: v)),
+                      )),
                   _row('服务状态', _serviceDescribe(), _serviceBadge()),
                   _row('服务文件',
                       s.serviceTemplatesEmbedded ? '内嵌模板（systemd / OpenRC / runit），安装时填充路径' : '运行时生成',
@@ -221,6 +231,22 @@ class _SettingsPageState extends State<SettingsPage> {
                 _row('启动时最小化', '启动即隐藏到托盘，只在后台跑代理（下次启动生效）',
                     _toggle(s.settings.startMinimized,
                         (v) => s.saveSettings(s.settings.copyWith(startMinimized: v)))),
+                if (_draft.tunEnabled && _tunCapable == false)
+                  _row(
+                    'TUN 需要授权',
+                    '当前内核没有 CAP_NET_ADMIN（内嵌/下载的副本默认不带），点右侧授权一次',
+                    Btn(
+                      label: '授权此内核',
+                      small: true,
+                      color: amber,
+                      loading: s.isPending('tuncap'),
+                      onTap: () => s.runPending('tuncap', () async {
+                        await s.installTunCapability();
+                        final ok = await s.tunCapable();
+                        if (mounted) setState(() => _tunCapable = ok);
+                      }),
+                    ),
+                  ),
                 _row(
                   'TUN 模式',
                   _tunCapable == null

@@ -21,8 +21,12 @@ abstract class AranPlatform {
   /// Does this host/deployment support a system service supervisor?
   bool get supportsSystemService;
 
-  /// Which supervisor: systemd | openrc | runit | none.
+  /// Which supervisor: systemd | systemd-user | openrc | runit | none.
   String get serviceKind;
+
+  /// Scope for the systemd supervisor: `user` (no root) or `system` (elevated).
+  String get serviceScope;
+  set serviceScope(String value);
 
   /// Per-user writable state (config, runtime config, logs, snapshots).
   Directory dataDir(String? xdgDataHome, String home);

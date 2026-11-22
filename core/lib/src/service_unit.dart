@@ -99,9 +99,19 @@ exec $kernelPath -d $dataDir 2>&1
   bool get hasEmbeddedTemplates =>
       File('${Bundled.assetsDir.path}/service/aran-kernel.service.tmpl').existsSync();
 
+  /// User-scope systemd unit: same content, but installed under
+  /// ~/.config/systemd/user and enabled with `systemctl --user` — no root, no
+  /// password prompt, ever.
+  String userContent() => content().replaceAll('WantedBy=multi-user.target', 'WantedBy=default.target');
+
   /// Where each supervisor expects its file.
+  /// Path for the user-scope unit.
+  String userPath(String home) => '$home/.config/systemd/user/aran-kernel.service';
+
   String pathFor(String kind) {
     switch (kind) {
+      case 'systemd-user':
+        return '/.config/systemd/user/aran-kernel.service';
       case 'openrc':
         return '/etc/init.d/aran-kernel';
       case 'runit':

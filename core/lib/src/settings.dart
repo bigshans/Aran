@@ -101,6 +101,9 @@ class AranSettings {
   /// managed = the GUI spawns mihomo; service = systemd runs it (GUI is a client)
   final String runMode;
 
+  /// systemd scope: user (no root) | system (elevated)
+  final String serviceScope;
+
   /// Fixed endpoints used in service mode (the unit cannot ask us for ports).
   final int servicePort;
   final int serviceControllerPort;
@@ -161,6 +164,7 @@ class AranSettings {
     this.notifyEnabled = true,
     this.watchdogEnabled = true,
     this.runMode = 'managed',
+    this.serviceScope = 'user',
     this.servicePort = 7890,
     this.serviceControllerPort = 9091,
     this.serviceSecret = 'aran-service',
@@ -216,6 +220,7 @@ class AranSettings {
     bool? notifyEnabled,
     bool? watchdogEnabled,
     String? runMode,
+    String? serviceScope,
     int? servicePort,
     int? serviceControllerPort,
     String? serviceSecret,
@@ -270,6 +275,7 @@ class AranSettings {
         notifyEnabled: notifyEnabled ?? this.notifyEnabled,
         watchdogEnabled: watchdogEnabled ?? this.watchdogEnabled,
         runMode: runMode ?? this.runMode,
+        serviceScope: serviceScope ?? this.serviceScope,
         servicePort: servicePort ?? this.servicePort,
         serviceControllerPort: serviceControllerPort ?? this.serviceControllerPort,
         serviceSecret: serviceSecret ?? this.serviceSecret,
@@ -325,6 +331,7 @@ class AranSettings {
         'notifyEnabled': notifyEnabled,
         'watchdogEnabled': watchdogEnabled,
         'runMode': runMode,
+        'serviceScope': serviceScope,
         'servicePort': servicePort,
         'serviceControllerPort': serviceControllerPort,
         'serviceSecret': serviceSecret,
@@ -383,6 +390,7 @@ class AranSettings {
       notifyEnabled: j['notifyEnabled'] as bool? ?? true,
       watchdogEnabled: j['watchdogEnabled'] as bool? ?? true,
       runMode: j['runMode'] as String? ?? 'managed',
+      serviceScope: j['serviceScope'] as String? ?? 'user',
       servicePort: (j['servicePort'] as num?)?.toInt() ?? 7890,
       serviceControllerPort: (j['serviceControllerPort'] as num?)?.toInt() ?? 9091,
       serviceSecret: j['serviceSecret'] as String? ?? 'aran-service',

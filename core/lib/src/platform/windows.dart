@@ -44,6 +44,9 @@ class WindowsPlatform implements AranPlatform {
   String get serviceKind => portable ? 'none' : 'winsw';
 
   @override
+  String serviceScope = 'system';
+
+  @override
   Directory dataDir(String? xdgDataHome, String home) {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     if (portable) return Directory('$exeDir\\aran-data');

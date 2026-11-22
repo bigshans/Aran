@@ -100,6 +100,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> init() async {
     platform = createPlatform();
+    platform.serviceScope = settings.serviceScope;
     await dataDir.create(recursive: true);
     systemDark = await _detectSystemDark();
     final raw = await _settingsFile.exists() ? await _settingsFile.readAsString() : null;
@@ -447,7 +448,12 @@ class AppState extends ChangeNotifier {
       // Unit file is generated here, staged in our data dir, then installed by
       // the platform-specific supervisor path. Nothing ships in the bundle.
       final staged = File('${dataDir.path}/${unit.unitName}');
-      await staged.writeAsString(unit.contentFor(kind));
+      final home = Platform.environment['HOME'] ?? '.';
+      final body = kind == 'systemd-user' ? unit.userContent() : unit.contentFor(kind);
+      await staged.writeAsString(body);
+      if (kind == 'systemd-user') {
+        _log('用户级服务：$home/.config/systemd/user/aran-kernel.service（无需 root）');
+      }
 
       _notice('正在申请管理员授权，请在弹窗中输入密码…');
       final r = await platform
@@ -1253,6 +1259,9 @@ class AppState extends ChangeNotifier {
     notifier.notifyEnabled(settings.notifyEnabled);
     await _writeSettings();
     _startAutoUpdate();
+    if (next.serviceScope != settings.serviceScope) {
+      platform.serviceScope = next.serviceScope;
+    }
     if (kernelChanged) {
       // A different binary really does need a real restart.
       await kernel.stop();
