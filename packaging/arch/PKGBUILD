@@ -40,4 +40,10 @@ package() {
 
   install -Dm644 "$dir/data/flutter_assets/assets/icon.png" \
     "$pkgdir/usr/share/icons/hicolor/512x512/apps/aran-app.png"
+
+  # GPL-3.0 compliance for the bundled mihomo / smartdns binaries.
+  install -d "$pkgdir/usr/share/licenses/$pkgname"
+  for f in "$dir"/share/licenses/aran/*; do
+    [ -e "$f" ] && install -m644 "$f" "$pkgdir/usr/share/licenses/$pkgname/"
+  done
 }

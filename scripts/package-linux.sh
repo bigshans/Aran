@@ -56,6 +56,14 @@ mkdir -p "$PKG"
 cp -a "$BUNDLE/." "$PKG/"
 install -Dm644 "$ROOT/app/assets/icon.png" "$PKG/share/icons/hicolor/512x512/apps/aran.png"
 
+# Upstream licences for the bundled binaries (GPL-3.0 compliance).
+LICDIR="$PKG/share/licenses/aran"
+install -d "$LICDIR"
+install -m644 "$ROOT/LICENSE" "$LICDIR/ARAN-LICENSE"
+[ -f "$ROOT/packaging/licenses/mihomo-LICENSE" ] && install -m644 "$ROOT/packaging/licenses/mihomo-LICENSE" "$LICDIR/mihomo-LICENSE"
+[ -f "$ROOT/packaging/licenses/smartdns-LICENSE" ] && install -m644 "$ROOT/packaging/licenses/smartdns-LICENSE" "$LICDIR/smartdns-LICENSE"
+echo "    许可证: $(ls "$LICDIR" | tr '\n' ' ')"
+
 cat > "$PKG/aran" <<'RUN'
 #!/usr/bin/env bash
 # Portable launcher: runs from wherever this directory is unpacked.

@@ -17,7 +17,27 @@
 | TUN | 需要 `wintun.dll` 放在 `mihomo.exe` 同目录 **且** 以管理员身份运行；没有 setcap 等价物，所以 `tunCapable()` 会同时检查这两点 |
 | 进程校验 | `tasklist /FI "PID eq N" /FO CSV` |
 
-## 构建
+## 打包（在 Windows 主机上）
+
+```powershell
+# 便携版 ZIP（默认不含内核）
+.\scripts\package-windows.ps1
+# 内嵌内核 / SmartDNS
+.\scripts\package-windows.ps1 -Kernel C:\tools\mihomo.exe -SmartDns C:\tools\smartdns.exe
+# 让便携版默认使用应用目录存放数据（生成 portable 标记）
+.\scripts\package-windows.ps1 -Kernel ... -PortableDefault
+```
+
+产物：
+
+| 文件 | 说明 |
+|---|---|
+| `dist\aran-<ver>-windows-x64-portable.zip` | 解压即用；含 `aran_app.exe`、`data\`、`licenses\`、`README.txt` |
+| `dist\aran-<ver>-windows-x64-setup.exe` | Inno Setup 安装包：按用户安装到 `%LOCALAPPDATA%\Programs\Aran`（**不需要管理员**），可选桌面快捷方式与登录自启 |
+
+安装包定义在 `packaging/windows/aran.iss`，需要 Inno Setup 6（`ISCC.exe`）；缺失时脚本只出 ZIP 并给警告。
+
+## 构建（手动）
 
 在 **Windows 主机**上（交叉编译不受支持）：
 
