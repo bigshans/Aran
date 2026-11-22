@@ -220,6 +220,11 @@ class AppState extends ChangeNotifier {
   }
 
   void _log(String line) {
+    // Also persist: on a headless/CI machine the in-app log page is unreadable.
+    try {
+      final f = File('${dataDir.path}/app.log');
+      f.writeAsStringSync('${DateTime.now().toIso8601String()} $line\n', mode: FileMode.append, flush: false);
+    } catch (_) {}
     if (line.startsWith('[err]') && settings.notifyEnabled && line.contains('内核')) {
       unawaited(notifier.send('Aran 内核异常', line, urgent: true));
     }
@@ -398,7 +403,7 @@ class AppState extends ChangeNotifier {
         directKernel = false;
         _log('服务可用，重新交给 supervisor 接管');
       }
-      if (systemdKernel && serviceUnitInstalled) {
+      if (systemdKernel) {
         _notice('正在重启 systemd 内核…');
         final wasRunning = proxyRunning;
         final e = engine;
@@ -666,7 +671,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     var ok = false;
     try {
-      if (systemdKernel && serviceUnitInstalled) {
+      if (systemdKernel) {
         _notice('正在重启 systemd 内核…');
         directKernel = false;
         await _startServiceKernel();
@@ -799,7 +804,7 @@ class AppState extends ChangeNotifier {
     api?.close();
     api = null;
     await e?.dispose();
-    if (systemdKernel && serviceUnitInstalled) {
+    if (systemdKernel) {
       await stopService();
     } else {
       await kernel.stop();
