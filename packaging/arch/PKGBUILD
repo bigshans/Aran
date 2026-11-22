@@ -28,7 +28,12 @@ package() {
   rm -f "$pkgdir/opt/aran/README.txt" "$pkgdir/opt/aran/aran.desktop"
 
   install -d "$pkgdir/usr/bin"
-  ln -s /opt/aran/aran "$pkgdir/usr/bin/aran"
+  # Wrapper instead of a symlink to the launcher: no BASH_SOURCE guessing.
+  cat > "$pkgdir/usr/bin/aran" <<'WRAP'
+#!/bin/sh
+exec /opt/aran/aran_app "$@"
+WRAP
+  chmod 755 "$pkgdir/usr/bin/aran"
 
   install -d "$pkgdir/usr/share/applications"
   install -Dm644 "$dir/aran.desktop" "$pkgdir/usr/share/applications/aran.desktop"

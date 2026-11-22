@@ -66,8 +66,16 @@ echo "    许可证: $(ls "$LICDIR" | tr '\n' ' ')"
 
 cat > "$PKG/aran" <<'RUN'
 #!/usr/bin/env bash
-# Portable launcher: runs from wherever this directory is unpacked.
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Launcher that survives being symlinked (e.g. /usr/bin/aran -> /opt/aran/aran).
+# BASH_SOURCE alone reports the symlink's directory, which is how installs used
+# to fail with "aran_app: No such file or directory".
+self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+here="$(cd "$(dirname "$self")" && pwd)"
+if [ ! -x "$here/aran_app" ]; then
+  echo "aran_app 不在 $here —— 请用符号链接安装（ln -s <解压目录>/aran /usr/local/bin/aran），" >&2
+  echo "不要把启动脚本单独复制到别的目录。" >&2
+  exit 127
+fi
 exec "$here/aran_app" "$@"
 RUN
 chmod +x "$PKG/aran"
@@ -95,10 +103,13 @@ Aran — 便携版
   数据会落在 ./aran-data/
 
 安装到系统（可选）：
-  sudo install -Dm755 aran /usr/local/bin/aran
+  # 注意：必须用符号链接，不要把 aran 复制到 /usr/local/bin
+  sudo ln -sf "$PWD/aran" /usr/local/bin/aran
   sudo install -Dm644 aran.desktop /usr/share/applications/aran.desktop
   sudo install -Dm644 share/icons/hicolor/512x512/apps/aran.png \
       /usr/share/icons/hicolor/512x512/apps/aran.png
+  # 也可以整体放到 /opt 再链接：
+  #   sudo cp -a . /opt/aran && sudo ln -sf /opt/aran/aran /usr/local/bin/aran
 
 内核与服务文件（都在 data/flutter_assets/assets/ 下）：
   bin/mihomo        内嵌内核，首次运行会解压到数据目录（~/.local/share/aran/bin
