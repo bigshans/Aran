@@ -624,6 +624,7 @@ class AppState extends ChangeNotifier {
         if (!SmartDns.available) {
           _log('[err] 未安装 smartdns，回退到内置 DNS（sudo pacman -S smartdns）');
         } else {
+          smartdns.explicitPath = settings.smartDnsPath;
           final ok = await smartdns.start(
             upstreams: settings.smartdnsUpstreams,
             cacheSize: settings.smartdnsCache,
@@ -757,6 +758,7 @@ class AppState extends ChangeNotifier {
     }
     String? smartdnsAddress = smartdns.running ? smartdns.address : null;
     if (settings.dnsProvider == 'smartdns' && settings.dnsEnabled && smartdnsAddress == null) {
+      smartdns.explicitPath = settings.smartDnsPath;
       if (SmartDns.available &&
           await smartdns.start(
             upstreams: settings.smartdnsUpstreams,
@@ -1175,6 +1177,18 @@ class AppState extends ChangeNotifier {
     await _writeSettings();
     notifyListeners();
   }
+
+  /// smartdns binaries found on this machine (for the settings dropdown).
+  List<String> discoverSmartDns() {
+    final found = SmartDns.discover();
+    final explicit = settings.smartDnsPath.trim();
+    if (explicit.isNotEmpty && File(explicit).existsSync() && !found.contains(explicit)) {
+      return [explicit, ...found];
+    }
+    return found;
+  }
+
+  Future<String?> probeSmartDns(String path) => SmartDns.probeVersion(path);
 
   Future<void> setThemeStyle(String style) async {
     settings = settings.copyWith(themeStyle: style);

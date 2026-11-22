@@ -401,6 +401,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _row('fallback', '每行一个；用于解析被污染的域名', _multiline('fallback', lines: 2)),
               ]),
               _card('SmartDNS（可选）', [
+                _row('SmartDNS 二进制', _smartDnsHint(), _smartDnsPicker(context)),
                 _row(
                   '启用 SmartDNS',
                   SmartDns.available
@@ -773,6 +774,82 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  String _smartDnsHint() {
+    final explicit = s.settings.smartDnsPath.trim();
+    if (explicit.isEmpty) {
+      final found = s.discoverSmartDns();
+      return found.isEmpty ? '未检测到 smartdns（PATH 与数据目录都没有）' : '自动探测到 ${found.length} 个候选';
+    }
+    return File(explicit).existsSync() ? '使用指定路径' : '$explicit（文件不存在）';
+  }
+
+  Widget _smartDnsPicker(BuildContext context) {
+    final found = s.discoverSmartDns();
+    final explicit = s.settings.smartDnsPath.trim();
+    final current = explicit.isEmpty
+        ? '自动探测'
+        : (File(explicit).existsSync() ? explicit : '$explicit（不存在）');
+    final items = <String>[
+      '自动探测',
+      ...found,
+      if (explicit.isNotEmpty && !found.contains(explicit)) '$explicit（不存在）',
+      '自定义路径…',
+    ];
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Btn(
+        label: '校验',
+        small: true,
+        onTap: () async {
+          final path = explicit.isEmpty ? (found.firstOrNull ?? '') : explicit;
+          if (path.isEmpty) {
+            s.setError('没有可校验的 smartdns');
+            return;
+          }
+          final v = await s.probeSmartDns(path);
+          s.setError(v == null ? '无法执行：$path' : null);
+          if (v != null && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('$path → $v'), duration: const Duration(seconds: 3)),
+            );
+          }
+        },
+      ),
+      const SizedBox(width: 8),
+      _dropdown(
+        value: items.contains(current) ? current : items.first,
+        width: 320,
+        items: items,
+        onChanged: (v) async {
+          if (v == '自定义路径…') {
+            final ctrl = TextEditingController(text: s.settings.smartDnsPath);
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('指定 smartdns 路径'),
+                content: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  style: mono.copyWith(fontSize: 12),
+                  decoration: const InputDecoration(labelText: '可执行文件', hintText: '/usr/bin/smartdns'),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('使用')),
+                ],
+              ),
+            );
+            if (ok == true) {
+              await s.saveSettings(s.settings.copyWith(smartDnsPath: ctrl.text.trim()));
+            }
+            return;
+          }
+          await s.saveSettings(
+              s.settings.copyWith(smartDnsPath: v == '自动探测' ? '' : v.replaceAll('（不存在）', '')));
+        },
+      ),
+    ]);
   }
 
   Widget _card(String title, List<Widget> rows) => Container(

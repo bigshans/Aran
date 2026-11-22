@@ -58,6 +58,8 @@ class AranSettings {
 
   /// builtin (mihomo's own DNS) | smartdns (external sidecar)
   final String dnsProvider;
+  /// Explicit smartdns binary; empty = auto-detect (PATH / data dir / embedded).
+  final String smartDnsPath;
   final List<String> smartdnsUpstreams;
   final int smartdnsCache;
   final bool smartdnsSpeedCheck;
@@ -142,6 +144,7 @@ class AranSettings {
     this.compactRail = false,
     this.kernelPath = '',
     this.dnsProvider = 'builtin',
+    this.smartDnsPath = '',
     this.smartdnsUpstreams = const ['223.5.5.5', '119.29.29.29', 'https://doh.pub/dns-query'],
     this.smartdnsCache = 4096,
     this.smartdnsSpeedCheck = true,
@@ -196,6 +199,7 @@ class AranSettings {
     bool? compactRail,
     String? kernelPath,
     String? dnsProvider,
+    String? smartDnsPath,
     List<String>? smartdnsUpstreams,
     int? smartdnsCache,
     bool? smartdnsSpeedCheck,
@@ -249,6 +253,7 @@ class AranSettings {
         compactRail: compactRail ?? this.compactRail,
         kernelPath: kernelPath ?? this.kernelPath,
         dnsProvider: dnsProvider ?? this.dnsProvider,
+        smartDnsPath: smartDnsPath ?? this.smartDnsPath,
         smartdnsUpstreams: smartdnsUpstreams ?? this.smartdnsUpstreams,
         smartdnsCache: smartdnsCache ?? this.smartdnsCache,
         smartdnsSpeedCheck: smartdnsSpeedCheck ?? this.smartdnsSpeedCheck,
@@ -303,6 +308,7 @@ class AranSettings {
         'compactRail': compactRail,
         'kernelPath': kernelPath,
         'dnsProvider': dnsProvider,
+        'smartDnsPath': smartDnsPath,
         'smartdnsUpstreams': smartdnsUpstreams,
         'smartdnsCache': smartdnsCache,
         'smartdnsSpeedCheck': smartdnsSpeedCheck,
@@ -360,6 +366,7 @@ class AranSettings {
       compactRail: j['compactRail'] as bool? ?? false,
       kernelPath: j['kernelPath'] as String? ?? '',
       dnsProvider: j['dnsProvider'] as String? ?? 'builtin',
+      smartDnsPath: j['smartDnsPath'] as String? ?? '',
       smartdnsUpstreams: list(j['smartdnsUpstreams'], const ['223.5.5.5', '119.29.29.29']),
       smartdnsCache: (j['smartdnsCache'] as num?)?.toInt() ?? 4096,
       smartdnsSpeedCheck: j['smartdnsSpeedCheck'] as bool? ?? true,

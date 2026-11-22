@@ -46,18 +46,59 @@ class SmartDns {
   SmartDns({required this.dataDir, required this.onLog});
 
   bool get running => _running;
+
+  /// Explicit binary from settings (empty = auto).
+  String explicitPath = '';
   String get address => '127.0.0.1:$port';
 
   static String? _extracted;
 
-  /// Prefer a bundled copy (see [Bundled]), then the system one.
-  static Future<String?> resolveBinary(Directory dataDir) async {
+  /// Resolution order: explicit setting → embedded/downloaded in the data dir →
+  /// anything found on PATH.
+  static Future<String?> resolveBinary(Directory dataDir, {String? explicit}) async {
+    final custom = explicit?.trim() ?? '';
+    if (custom.isNotEmpty && File(custom).existsSync()) {
+      _extracted = custom;
+      return custom;
+    }
     final bundled = await Bundled.extract('smartdns', dataDir) ?? Bundled.existing('smartdns', dataDir);
     if (bundled != null) {
       _extracted = bundled;
       return bundled;
     }
     return findBinary();
+  }
+
+  /// Candidates that actually exist on this machine (for the settings dropdown).
+  static List<String> discover() {
+    // Dedupe symlinks: /bin → /usr/bin, /usr/sbin → /usr/bin.
+    final byReal = <String, String>{};
+    for (final c in candidates) {
+      if (!File(c).existsSync()) continue;
+      String real;
+      try {
+        real = File(c).resolveSymbolicLinksSync();
+      } catch (_) {
+        real = c;
+      }
+      final existing = byReal[real];
+      if (existing == null || c.length < existing.length || existing.startsWith('/bin/')) {
+        byReal[real] = c.startsWith('/bin/') ? existing ?? c : c;
+      }
+    }
+    final list = byReal.values.toList()..sort();
+    return list;
+  }
+
+  static Future<String?> probeVersion(String path) async {
+    try {
+      final r = await Process.run(path, ['-v']);
+      final out = '${r.stdout}${r.stderr}'.trim();
+      if (r.exitCode != 0 || out.isEmpty) return null;
+      return out.split('\n').first.trim();
+    } catch (_) {
+      return null;
+    }
   }
 
   static String? findBinary() {
@@ -73,20 +114,7 @@ class SmartDns {
     return null;
   }
 
-  static bool get available => findBinary() != null;
-
-  /// `smartdns -v` prints its version; used by the settings page.
-  static Future<String?> probeVersion() async {
-    final bin = findBinary();
-    if (bin == null) return null;
-    try {
-      final r = await Process.run(bin, ['-v']);
-      final out = '${r.stdout}${r.stderr}'.trim();
-      return out.isEmpty ? null : out.split('\n').first.trim();
-    } catch (_) {
-      return null;
-    }
-  }
+  static bool get available => _extracted != null || findBinary() != null;
 
   String buildConfig({
     required List<String> upstreams,
@@ -125,7 +153,7 @@ class SmartDns {
     bool ipv4Only = false,
     bool speedCheck = true,
   }) async {
-    final bin = await resolveBinary(dataDir);
+    final bin = await resolveBinary(dataDir, explicit: explicitPath);
     if (bin == null) {
       onLog('[err] 未找到 smartdns，可先安装：sudo pacman -S smartdns');
       return false;
