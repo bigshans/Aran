@@ -338,6 +338,42 @@ class LinuxPlatform implements AranPlatform {
   }
 
   @override
+  Future<ProcessResult> removeService() async {
+    if (init == InitSystem.systemd && _userScope) {
+      await Process.run('systemctl', ['--user', 'disable', '--now', 'aran-kernel.service']);
+      final f = File(serviceUnitPath());
+      if (await f.exists()) await f.delete();
+      await Process.run('systemctl', ['--user', 'daemon-reload']);
+      return ProcessResult(0, 0, 'removed', '');
+    }
+    final r = await controlService('stop');
+    if (init == InitSystem.systemd) {
+      final rm = await elevated(['rm', '-f', serviceUnitPath()]);
+      await elevated(['systemctl', 'daemon-reload']);
+      return rm.exitCode == 0 ? rm : r;
+    }
+    return elevated(['rm', '-f', serviceUnitPath()]);
+  }
+
+  @override
+  Future<String> serviceLogs({int lines = 60}) async {
+    if (init != InitSystem.systemd) {
+      return '当前 init（${init.name}）没有统一的日志接口，请查看 /var/log/aran-kernel.log';
+    }
+    final scope = _userScope ? ['--user'] : <String>[];
+    try {
+      final r = await Process.run(
+        'journalctl',
+        [...scope, '-u', 'aran-kernel.service', '-n', '$lines', '--no-pager', '-o', 'short-iso'],
+      );
+      final out = '${r.stdout}'.trim();
+      return out.isEmpty ? '${r.stderr}'.trim() : out;
+    } catch (e) {
+      return '读取日志失败：$e';
+    }
+  }
+
+  @override
   Future<ProcessResult> elevated(List<String> argv) async {
     // polkit first (session agent shows a prompt), sudo as a last resort.
     final hasPkexec = File('/usr/bin/pkexec').existsSync();

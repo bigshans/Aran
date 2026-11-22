@@ -68,6 +68,12 @@ abstract class AranPlatform {
   /// Reload the supervisor and enable the unit at boot.
   Future<void> enableService();
 
+  /// Disable and remove the unit (no elevation in user scope).
+  Future<ProcessResult> removeService();
+
+  /// Last [lines] of the kernel's service log (journalctl / sc / schtasks).
+  Future<String> serviceLogs({int lines = 60});
+
   // ---- privileges ----
   /// Run a command with elevation (pkexec/sudo, UAC, …). Callers handle the
   /// case where the user cancels.

@@ -376,7 +376,7 @@ class AppState extends ChangeNotifier {
   void _startServicePolling() {
     _servicePoll?.cancel();
     if (!serviceMode) return;
-    _servicePoll = Timer.periodic(const Duration(seconds: 3), (_) => refreshServiceInfo());
+    _servicePoll = Timer.periodic(const Duration(milliseconds: 1500), (_) => refreshServiceInfo());
   }
 
   /// Restart the kernel no matter who owns it (our child or systemd).
@@ -425,6 +425,21 @@ class AppState extends ChangeNotifier {
   String manualInstallCommand() {
     final unit = ServiceUnit(kernelPath: kernel.binaryPath, dataDir: dataDir.path);
     final kind = platform.serviceKind;
+    final staged = '${dataDir.path}/${unit.unitName}';
+
+    if (kind == 'systemd-user') {
+      // No sudo anywhere: everything is inside the user's own systemd instance.
+      final home = Platform.environment['HOME'] ?? '.';
+      final target = '$home/.config/systemd/user/${unit.unitName}';
+      return 'mkdir -p ~/.config/systemd/user '
+          '&& cp "$staged" "$target" '
+          '&& systemctl --user daemon-reload '
+          '&& systemctl --user enable --now aran-kernel.service';
+    }
+    if (kind == 'task-user') {
+      return 'schtasks /create /f /tn AranKernel /tr \'"${kernel.binaryPath}" -d "${dataDir.path}"\' '
+          '/sc onlogon /rl LIMITED';
+    }
     final target = unit.pathFor(kind);
     final mode = kind == 'systemd' ? '644' : '755';
     final enable = switch (kind) {
@@ -432,7 +447,31 @@ class AppState extends ChangeNotifier {
       'runit' => ' && sudo ln -sf /etc/sv/aran-kernel /var/service/aran-kernel',
       _ => ' && sudo systemctl daemon-reload && sudo systemctl enable aran-kernel.service',
     };
-    return 'sudo install -m $mode ${dataDir.path}/${unit.unitName} $target$enable';
+    return 'sudo install -m $mode $staged $target$enable';
+  }
+
+  /// Resume polling immediately (called after every service action).
+  void pokeServiceStatus() {
+    _startServicePolling();
+    unawaited(refreshServiceInfo());
+  }
+
+  Future<void> removeService() async {
+    await runPending('svcremove', () async {
+      final r = await platform.removeService();
+      _notice(r.exitCode == 0 ? '服务已卸载' : '卸载失败：${r.stderr}', ok: r.exitCode == 0);
+      pokeServiceStatus();
+    });
+  }
+
+  Future<String> loadServiceLogs() => platform.serviceLogs();
+
+  Future<void> startServiceNow() async {
+    await runPending('svcstart', () async {
+      final r = await platform.controlService('start');
+      _notice(r.exitCode == 0 ? '服务已启动' : '启动失败：${r.stderr}', ok: r.exitCode == 0);
+      pokeServiceStatus();
+    });
   }
 
   Future<void> installService() async {
@@ -1261,6 +1300,10 @@ class AppState extends ChangeNotifier {
     _startAutoUpdate();
     if (next.serviceScope != settings.serviceScope) {
       platform.serviceScope = next.serviceScope;
+    }
+    if (next.runMode == 'service') {
+      _startServicePolling();
+      unawaited(refreshServiceInfo());
     }
     if (kernelChanged) {
       // A different binary really does need a real restart.

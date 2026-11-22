@@ -163,66 +163,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         items: const ['user', 'system'],
                         onChanged: (v) => _update(_draft.copyWith(serviceScope: v)),
                       )),
-                  _row('服务状态', _serviceDescribe(), _serviceBadge()),
-                  _row('服务文件',
-                      s.serviceTemplatesEmbedded ? '内嵌模板（systemd / OpenRC / runit），安装时填充路径' : '运行时生成',
-                      Btn(
-                        label: '手动命令',
-                        small: true,
-                        color: dim,
-                        onTap: () => _showManualInstall(context),
-                      )),
-                  _row('systemd 服务', '安装 / 重启需要一次 polkit 授权',
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Btn(
-                          label: '安装',
-                          small: true,
-                          loading: s.isPending('svcinstall'),
-                          onTap: () => s.runPending('svcinstall', () => s.installService()),
-                        ),
-                        const SizedBox(width: 6),
-                        Btn(
-                          label: '手动命令',
-                          small: true,
-                          color: dim,
-                          onTap: () => _showManualInstall(context),
-                        ),
-                        const SizedBox(width: 6),
-                        Btn(
-                          label: '刷新状态',
-                          small: true,
-                          loading: s.isPending('svcrefresh'),
-                          onTap: () => s.runPending('svcrefresh', () => s.refreshServiceInfo()),
-                        ),
-                        const SizedBox(width: 6),
-                        Btn(
-                          label: '停止服务',
-                          color: red,
-                          small: true,
-                          loading: s.isPending('svcstop'),
-                          onTap: () => s.runPending('svcstop', () => s.stopService()),
-                        ),
-                      ])),
+                  _row('服务', _serviceDescribe(), Row(mainAxisSize: MainAxisSize.min, children: [
+                    _servicePrimaryButton(),
+                    const SizedBox(width: 8),
+                    _serviceMenu(context),
+                  ])),
                 ],
                 _row('内核来源', _kernelSourceDescribe(), _kernelSourceBadge()),
-                _row('重起内核', '重启的是内核进程本身；只有 systemd 托管时才走 systemctl',
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      Btn(
-                        label: '重启内核',
-                        icon: Icons.refresh,
-                        small: true,
-                        color: amber,
-                        loading: s.isPending('restart'),
-                        onTap: () => s.runPending('restart', () => s.restartKernel()),
-                      ),
-                      const SizedBox(width: 8),
-                      Btn(
-                        label: '直接启动内核',
-                        small: true,
-                        loading: s.isPending('direct'),
-                        onTap: () => s.runPending('direct', () => s.startKernelDirect()),
-                      ),
-                    ])),
+                _row('直接启动内核', '不用 systemd，由 Aran 自己拉起并管理进程',
+                    Btn(
+                      label: '直接启动',
+                      small: true,
+                      loading: s.isPending('direct'),
+                      onTap: () => s.runPending('direct', () => s.startKernelDirect()),
+                    )),
                 _row('系统代理', '把桌面（KDE/GNOME）代理指向本机混合端口；与 TUN 二选一',
                     _toggle(s.settings.systemProxy, (v) => s.setSystemProxy(v))),
                 _row('桌面通知', '订阅更新失败、流量告急、内核异常时发系统通知',
@@ -880,6 +834,99 @@ class _SettingsPageState extends State<SettingsPage> {
         },
       ),
     ]);
+  }
+
+  /// One button whose meaning follows the state: install → start → stop.
+  Widget _servicePrimaryButton() {
+    if (!s.supportsSystemService) return Btn(label: '不支持服务', small: true, onTap: null);
+    final info = s.serviceInfo;
+    final installed = info['installed'] == 'yes';
+    final active = info['active'] == 'active';
+    if (!installed) {
+      return Btn(
+        label: '安装',
+        small: true,
+        filled: true,
+        loading: s.isPending('svcinstall'),
+        onTap: () => s.runPending('svcinstall', () => s.installService()),
+      );
+    }
+    return Btn(
+      label: active ? '停止' : '启动',
+      small: true,
+      filled: true,
+      color: active ? red : green,
+      loading: s.isPending(active ? 'svcstop' : 'svcstart'),
+      onTap: active
+          ? () => s.runPending('svcstop', () => s.stopService())
+          : () => s.startServiceNow(),
+    );
+  }
+
+  Widget _serviceMenu(BuildContext context) {
+    final installed = s.serviceInfo['installed'] == 'yes';
+    return PopupMenuButton<String>(
+      tooltip: '更多服务操作',
+      color: panel,
+      position: PopupMenuPosition.under,
+      icon: Icon(Icons.more_horiz, size: 18, color: dim),
+      onSelected: (v) {
+        switch (v) {
+          case 'restart':
+            s.runPending('svcrestart', () async {
+              await s.restartKernel();
+              s.pokeServiceStatus();
+            });
+          case 'logs':
+            _showServiceLogs(context);
+          case 'manual':
+            _showManualInstall(context);
+          case 'remove':
+            s.removeService();
+        }
+      },
+      itemBuilder: (context) => [
+        _svcItem('restart', '重启内核', Icons.refresh, enabled: installed),
+        _svcItem('logs', '查看服务日志', Icons.article_outlined),
+        _svcItem('manual', '手动命令', Icons.terminal),
+        const PopupMenuDivider(),
+        _svcItem('remove', '卸载服务', Icons.delete_outline, color: red, enabled: installed),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _svcItem(String value, String label, IconData icon,
+      {Color? color, bool enabled = true}) {
+    final c = enabled ? (color ?? text) : dim;
+    return PopupMenuItem(
+      value: value,
+      height: 38,
+      enabled: enabled,
+      child: Row(children: [
+        Icon(icon, size: 15, color: c),
+        const SizedBox(width: 10),
+        Text(label, style: mono.copyWith(fontSize: 12, color: c)),
+      ]),
+    );
+  }
+
+  Future<void> _showServiceLogs(BuildContext context) async {
+    final logs = await s.loadServiceLogs();
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('服务日志'),
+        content: SizedBox(
+          width: 900,
+          height: 460,
+          child: SingleChildScrollView(
+            child: SelectableText(logs, style: mono.copyWith(fontSize: 11.5, height: 1.5)),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+      ),
+    );
   }
 
   Widget _card(String title, List<Widget> rows) => Container(

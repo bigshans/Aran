@@ -237,6 +237,31 @@ class WindowsPlatform implements AranPlatform {
   }
 
   @override
+  Future<ProcessResult> removeService() async {
+    if (_userScope) return Process.run('schtasks', ['/delete', '/f', '/tn', _taskName]);
+    await controlService('stop');
+    return elevated(['sc.exe', 'delete', _serviceName]);
+  }
+
+  @override
+  Future<String> serviceLogs({int lines = 60}) async {
+    // Windows has no journal: show the event log entries for the service/task.
+    try {
+      final r = await Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Get-WinEvent -LogName Application -MaxEvents $lines | '
+            'Where-Object { \$_.ProviderName -match "aran|mihomo|schtasks" } | '
+            'Format-Table -AutoSize TimeCreated,ProviderName,Message',
+      ]);
+      final out = '${r.stdout}'.trim();
+      return out.isEmpty ? '（没有相关事件日志）' : out;
+    } catch (e) {
+      return '读取日志失败：$e';
+    }
+  }
+
+  @override
   Future<ProcessResult> elevated(List<String> argv) async {
     // UAC prompt; -Wait so we can report the exit code. Arguments are joined
     // into a single -ArgumentList string, hence the quoting.
