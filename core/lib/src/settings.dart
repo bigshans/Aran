@@ -14,6 +14,9 @@ class AranSettings {
   final int mixedPort;
   final int httpPort;
   final int socksPort;
+
+  /// mihomo external controller port (single source of truth for both modes).
+  final int controllerPort;
   final bool allowLan;
   final bool ipv6;
   final String logLevel;
@@ -104,9 +107,7 @@ class AranSettings {
   /// systemd scope: user (no root) | system (elevated)
   final String serviceScope;
 
-  /// Fixed endpoints used in service mode (the unit cannot ask us for ports).
-  final int servicePort;
-  final int serviceControllerPort;
+  /// Secret for the mihomo controller. Shared by both run modes.
   final String serviceSecret;
 
   /// Per-group region preference, e.g. {'TikTok': '新加坡'}. Empty = any node.
@@ -122,6 +123,7 @@ class AranSettings {
     this.mixedPort = 7890,
     this.httpPort = 7891,
     this.socksPort = 7892,
+    this.controllerPort = 9090,
     this.allowLan = false,
     this.ipv6 = false,
     this.logLevel = 'info',
@@ -165,8 +167,6 @@ class AranSettings {
     this.watchdogEnabled = true,
     this.runMode = 'managed',
     this.serviceScope = 'user',
-    this.servicePort = 7890,
-    this.serviceControllerPort = 9091,
     this.serviceSecret = 'aran-service',
     this.groupPrefs = const {},
     this.groupModes = const {},
@@ -178,6 +178,7 @@ class AranSettings {
     int? mixedPort,
     int? httpPort,
     int? socksPort,
+    int? controllerPort,
     bool? allowLan,
     bool? ipv6,
     String? logLevel,
@@ -221,8 +222,6 @@ class AranSettings {
     bool? watchdogEnabled,
     String? runMode,
     String? serviceScope,
-    int? servicePort,
-    int? serviceControllerPort,
     String? serviceSecret,
     Map<String, String>? groupPrefs,
     Map<String, String>? groupModes,
@@ -233,6 +232,7 @@ class AranSettings {
         mixedPort: mixedPort ?? this.mixedPort,
         httpPort: httpPort ?? this.httpPort,
         socksPort: socksPort ?? this.socksPort,
+        controllerPort: controllerPort ?? this.controllerPort,
         allowLan: allowLan ?? this.allowLan,
         ipv6: ipv6 ?? this.ipv6,
         logLevel: logLevel ?? this.logLevel,
@@ -276,8 +276,6 @@ class AranSettings {
         watchdogEnabled: watchdogEnabled ?? this.watchdogEnabled,
         runMode: runMode ?? this.runMode,
         serviceScope: serviceScope ?? this.serviceScope,
-        servicePort: servicePort ?? this.servicePort,
-        serviceControllerPort: serviceControllerPort ?? this.serviceControllerPort,
         serviceSecret: serviceSecret ?? this.serviceSecret,
         groupPrefs: groupPrefs ?? this.groupPrefs,
         groupModes: groupModes ?? this.groupModes,
@@ -289,6 +287,7 @@ class AranSettings {
         'mixedPort': mixedPort,
         'httpPort': httpPort,
         'socksPort': socksPort,
+        'controllerPort': controllerPort,
         'allowLan': allowLan,
         'ipv6': ipv6,
         'logLevel': logLevel,
@@ -332,8 +331,6 @@ class AranSettings {
         'watchdogEnabled': watchdogEnabled,
         'runMode': runMode,
         'serviceScope': serviceScope,
-        'servicePort': servicePort,
-        'serviceControllerPort': serviceControllerPort,
         'serviceSecret': serviceSecret,
         'groupPrefs': groupPrefs,
         'groupModes': groupModes,
@@ -348,6 +345,7 @@ class AranSettings {
       mixedPort: (j['mixedPort'] as num?)?.toInt() ?? 7890,
       httpPort: (j['httpPort'] as num?)?.toInt() ?? 7891,
       socksPort: (j['socksPort'] as num?)?.toInt() ?? 7892,
+      controllerPort: (j['controllerPort'] as num?)?.toInt() ?? 9090,
       allowLan: j['allowLan'] as bool? ?? false,
       ipv6: j['ipv6'] as bool? ?? false,
       logLevel: j['logLevel'] as String? ?? 'info',
@@ -391,8 +389,7 @@ class AranSettings {
       watchdogEnabled: j['watchdogEnabled'] as bool? ?? true,
       runMode: j['runMode'] as String? ?? 'managed',
       serviceScope: j['serviceScope'] as String? ?? 'user',
-      servicePort: (j['servicePort'] as num?)?.toInt() ?? 7890,
-      serviceControllerPort: (j['serviceControllerPort'] as num?)?.toInt() ?? 9091,
+      // 旧版本的 servicePort/serviceControllerPort 已废弃：端口只有一套（mixedPort/httpPort/socksPort）
       serviceSecret: j['serviceSecret'] as String? ?? 'aran-service',
       groupPrefs: (j['groupPrefs'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ?? const {},
       groupModes: (j['groupModes'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ?? const {},

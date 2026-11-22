@@ -44,7 +44,6 @@ class _SettingsPageState extends State<SettingsPage> {
       'cooldown': TextEditingController(text: '${_draft.cooldownMinutes}'),
       'testUrl': TextEditingController(text: _draft.testUrl),
       'testTimeout': TextEditingController(text: '${_draft.testTimeoutMs}'),
-      'servicePort': TextEditingController(text: '${_draft.servicePort}'),
     };
     // Editing *is* applying: switches/dropdowns apply at once, text fields apply
     // shortly after typing stops. No save button.
@@ -104,7 +103,6 @@ class _SettingsPageState extends State<SettingsPage> {
       cooldownMinutes: num('cooldown') ?? _draft.cooldownMinutes,
       testUrl: _ctrl['testUrl']!.text.trim(),
       testTimeoutMs: num('testTimeout') ?? _draft.testTimeoutMs,
-      servicePort: num('servicePort') ?? _draft.servicePort,
     );
   }
 
@@ -139,7 +137,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     )),
               ]),
               _card('系统集成', [
-                _row('运行模式', 'managed=GUI 拉起内核（关窗口即停）；service=systemd 托管（关窗口照跑，开机自启，TUN 免授权）',
+                _row('运行模式',
+                    'managed=GUI 拉起内核（关窗口即停）；service=systemd 托管（关窗口照跑，开机自启，TUN 免授权）。'
+                    '端口只有一套（混合 ${_draft.mixedPort}），两种模式共用',
                     _dropdown(
                       value: _draft.runMode,
                       width: 130,
@@ -147,8 +147,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (v) => _update(_draft.copyWith(runMode: v)),
                     )),
                 if (_draft.runMode == 'service' && s.supportsSystemService) ...[
-                  _row('服务端口', 'systemd 单元无法向 GUI 询问端口，所以服务模式需固定端口',
-                      _text('servicePort', width: 110)),
                   _row('服务范围',
                       _draft.serviceScope == 'user'
                           ? (Platform.isWindows
@@ -384,7 +382,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     _multiline('nameservers')),
                 _row('fallback', '每行一个；用于解析被污染的域名', _multiline('fallback', lines: 2)),
               ]),
-              _card('SmartDNS（可选）', [
+              if (!Platform.isWindows) _card('SmartDNS（可选）', [
                 _row('SmartDNS 二进制', _smartDnsHint(), _smartDnsPicker(context)),
                 _row(
                   '启用 SmartDNS',
@@ -406,6 +404,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 _row('仅 IPv4', '强制返回 A 记录（AAAA 返回 SOA）',
                     _toggle(_draft.smartdnsIpv4Only, (v) => _update(_draft.copyWith(smartdnsIpv4Only: v)))),
               ]),
+              if (Platform.isWindows)
+                _card('DNS', [
+                  _row('DNS 提供方', 'smartdns 不支持 Windows（上游无 Windows 构建），使用 mihomo 内置 DNS',
+                      Text('builtin', style: mono.copyWith(fontSize: 12, color: dim))),
+                ]),
               _card('嗅探', [
                 _row('启用嗅探', 'sniffer：从 TLS SNI / HTTP Host 还原域名，提高分流准确率',
                     _toggle(_draft.snifferEnabled, (v) => _update(_draft.copyWith(snifferEnabled: v)))),

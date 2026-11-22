@@ -412,7 +412,7 @@ class LinuxPlatform implements AranPlatform {
   @override
   Future<void> setDesktopProxy(int port, {required bool enable}) async {
     if (_isKde) {
-      final addr = 'http://127.0.0.1:$port';
+      final addr = 'http://127.0.0.1 $port'; // KDE stores host and port space-separated
       Future<void> set(String key, String value) =>
           Process.run('kwriteconfig6', ['--file', 'kioslaverc', '--group', 'Proxy Settings', '--key', key, value]);
       if (!enable) {
@@ -421,7 +421,7 @@ class LinuxPlatform implements AranPlatform {
         await set('ProxyType', '1');
         await set('httpProxy', addr);
         await set('httpsProxy', addr);
-        await set('socksProxy', 'socks://127.0.0.1:$port');
+        await set('socksProxy', 'socks://127.0.0.1 $port');
         await set('NoProxyFor', 'localhost,127.0.0.1,::1');
       }
       await Process.run('dbus-send',

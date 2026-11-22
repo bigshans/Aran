@@ -137,6 +137,10 @@ class AppState extends ChangeNotifier {
     // Restore the previous power state: a client that forgets it was on is annoying.
     if (profiles.active != null) {
       unawaited(startProxy());
+    } else {
+      // No profile means no proxy to start, but a desktop proxy left pointing at
+      // a stale port is worse than none — reconcile it with the run mode.
+      unawaited(_reconcileDesktopProxy());
     }
     notifyListeners();
   }
@@ -587,8 +591,8 @@ class AppState extends ChangeNotifier {
     await kernel.writeServiceConfig(
       config,
       settings: settings,
-      port: settings.servicePort,
-      controllerPort: settings.serviceControllerPort,
+      port: settings.mixedPort,
+      controllerPort: settings.controllerPort,
       secret: settings.serviceSecret,
       smartdnsAddress: smartdnsAddress,
       assetDirs: [
@@ -604,8 +608,13 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // The service kernel is a separate process; its ports come from the config
+    // we just wrote, so the desktop proxy has to follow them (it used to be left
+    // pointing at whatever the previous run mode bound).
+    unawaited(_refreshSystemProxy());
+
     // Wait until the controller answers.
-    final addr = '127.0.0.1:${settings.serviceControllerPort}';
+    final addr = '127.0.0.1:${settings.controllerPort}';
     for (var i = 0; i < 40; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       final probe = MihomoApi(addr: addr, secret: settings.serviceSecret);
@@ -717,6 +726,7 @@ class AppState extends ChangeNotifier {
       engine!.setGroupModes(settings.groupModes);
       await engine!.start();
       await _refreshSystemProxy();
+      await _reconcileDesktopProxy();
       await _startWatchdog();
       ok = true;
     } catch (e) {
@@ -1105,10 +1115,21 @@ class AppState extends ChangeNotifier {
 
   Future<bool> systemProxyActive() => platform.desktopProxyActive();
 
+  /// The port the *running* kernel actually binds. Managed mode reports what the
+  /// process really bound (autoPort may have picked something); service mode has
+  /// no handle on the process, so it is whatever we wrote into config.yaml.
+  int? get desktopProxyPort {
+    if (settings.runMode == 'service') {
+      // A service kernel never starts in socks/http-only mode by accident —
+      // it always mirrors the configured mixed port.
+      return settings.mixedPort > 0 ? settings.mixedPort : null;
+    }
+    return kernel.activePorts['mixed'] ?? kernel.activePorts['http'];
+  }
+
   /// TUN and system proxy are alternatives: enabling one turns the other off.
   Future<void> setSystemProxy(bool enabled) async {
-    final ports = kernel.activePorts;
-    final port = ports['mixed'] ?? ports['http'];
+    final port = desktopProxyPort;
     if (enabled && port == null) {
       _notice('内核未运行，先开启代理', ok: false);
       return;
@@ -1129,9 +1150,33 @@ class AppState extends ChangeNotifier {
   }
 
   /// Re-apply after the kernel rebound its ports (restart / mode change).
+  Future<void> _refreshSystemProxyAfterSave(AranSettings next) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final port = next.runMode == 'service'
+        ? (next.mixedPort > 0 ? next.mixedPort : null)
+        : (kernel.activePorts['mixed'] ?? kernel.activePorts['http']);
+    if (port == null) return;
+    try {
+      await platform.setDesktopProxy(port, enable: true);
+      _log('系统代理已重新指向 127.0.0.1:$port');
+    } catch (_) {}
+  }
+
+  /// On startup: if the desktop proxy claims to be on, make sure it points at the
+  /// port this run mode actually binds (a mode switch used to leave it stale).
+  Future<void> _reconcileDesktopProxy() async {
+    try {
+      final active = await platform.desktopProxyActive();
+      final port = desktopProxyPort;
+      if (!active || port == null) return;
+      await platform.setDesktopProxy(port, enable: true);
+      _log('系统代理已校准到 127.0.0.1:$port');
+    } catch (_) {}
+  }
+
   Future<void> _refreshSystemProxy() async {
     if (!settings.systemProxy) return;
-    final port = kernel.activePorts['mixed'] ?? kernel.activePorts['http'];
+    final port = desktopProxyPort;
     if (port == null) return;
     try {
       await platform.setDesktopProxy(port, enable: true);
@@ -1304,6 +1349,11 @@ class AppState extends ChangeNotifier {
     if (next.runMode == 'service') {
       _startServicePolling();
       unawaited(refreshServiceInfo());
+    }
+    if (next.runMode != settings.runMode &&
+        next.systemProxy) {
+      // Port moved (managed ⇄ service) — repoint the desktop proxy or it dies.
+      unawaited(_refreshSystemProxyAfterSave(next));
     }
     if (kernelChanged) {
       // A different binary really does need a real restart.
