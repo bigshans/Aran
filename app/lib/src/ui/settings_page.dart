@@ -151,8 +151,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       _text('servicePort', width: 110)),
                   _row('服务范围',
                       _draft.serviceScope == 'user'
-                          ? '当前用户（systemctl --user）：不需要 root，重启内核不会弹密码'
-                          : '系统级（/etc/systemd/system）：每次操作都要提权，需要 polkit/sudo',
+                          ? (Platform.isWindows
+                              ? '当前用户（登录计划任务）：不需要管理员，但登录后才启动且不能建 TUN'
+                              : '当前用户（systemctl --user）：不需要 root，重启内核不会弹密码')
+                          : (Platform.isWindows
+                              ? '系统级（Windows 服务）：安装与启停都需要 UAC'
+                              : '系统级（/etc/systemd/system）：每次操作都要提权，需要 polkit/sudo'),
                       _dropdown(
                         value: _draft.serviceScope,
                         width: 130,

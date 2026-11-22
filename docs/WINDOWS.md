@@ -17,6 +17,21 @@
 | TUN | 需要 `wintun.dll` 放在 `mihomo.exe` 同目录 **且** 以管理员身份运行；没有 setcap 等价物，所以 `tunCapable()` 会同时检查这两点 |
 | 进程校验 | `tasklist /FI "PID eq N" /FO CSV` |
 
+## 服务范围（对应 Linux 的 systemd user/system）
+
+| 范围 | 机制 | 安装 | 启停 | 密码 |
+|---|---|---|---|---|
+| `user`（默认） | 登录计划任务 `schtasks /sc onlogon /rl LIMITED` | 不需要管理员 | `schtasks /run|/end`，不需要管理员 | 从不 |
+| `system` | Windows 服务 `sc.exe create AranKernel` | 需要管理员 | 需要管理员 | 每次（或配置服务 DACL） |
+
+用户级计划任务的限制：**登录后才启动**（不随开机），并且**不能创建 TUN**——
+Windows 没有 setcap 等价物，TUN 必须在提权进程里跑。
+
+```powershell
+# 查看当前状态（应用里也显示）
+schtasks /query /tn AranKernel /fo LIST /v
+```
+
 ## 打包（在 Windows 主机上）
 
 ```powershell

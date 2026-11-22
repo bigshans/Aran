@@ -40,11 +40,19 @@ class WindowsPlatform implements AranPlatform {
   @override
   bool get supportsSystemService => !portable;
 
+  /// Windows equivalents of systemd scopes:
+  ///   user   → a logon scheduled task running as this user (no admin ever)
+  ///   system → a real Windows Service via sc.exe (admin to install/control)
   @override
-  String get serviceKind => portable ? 'none' : 'winsw';
+  String serviceScope = 'user';
+
+  bool get _userScope => serviceScope == 'user';
 
   @override
-  String serviceScope = 'system';
+  String get serviceKind {
+    if (portable) return 'none';
+    return _userScope ? 'task-user' : 'winsw';
+  }
 
   @override
   Directory dataDir(String? xdgDataHome, String home) {
@@ -127,14 +135,20 @@ class WindowsPlatform implements AranPlatform {
     return r.exitCode == 0;
   }
 
+  static const _taskName = 'AranKernel';
+
   @override
   bool serviceInstalled() {
+    if (_userScope) {
+      final r = Process.runSync('schtasks', ['/query', '/tn', _taskName]);
+      return r.exitCode == 0;
+    }
     final r = Process.runSync('sc.exe', ['query', _serviceName]);
     return r.exitCode == 0;
   }
 
   @override
-  String serviceUnitPath() => 'sc.exe:$_serviceName';
+  String serviceUnitPath() => _userScope ? 'schtasks:$_taskName' : 'sc.exe:$_serviceName';
 
   @override
   Future<ProcessResult> installService({
@@ -142,19 +156,40 @@ class WindowsPlatform implements AranPlatform {
     required String dataDir,
     required String kernelPath,
   }) async {
+    if (_userScope) {
+      // Logon task running as the invoking user: no UAC, no service DACL games.
+      final cmd = '"$kernelPath" -d "$dataDir"';
+      return Process.run('schtasks', [
+        '/create', '/f',
+        '/tn', _taskName,
+        '/tr', cmd,
+        '/sc', 'onlogon',
+        '/rl', 'LIMITED',
+      ]);
+    }
     // `binPath` must be one quoted argument; sc.exe needs the space after '='.
     final bin = '"$kernelPath" -d "$dataDir"';
     return elevated(['sc.exe', 'create', _serviceName, 'binPath=', bin, 'start=', 'auto']);
   }
 
   @override
-  Future<ProcessResult> uninstallService(String scriptPath) =>
-      elevated(['sc.exe', 'delete', _serviceName]);
+  Future<ProcessResult> uninstallService(String scriptPath) {
+    if (_userScope) return Process.run('schtasks', ['/delete', '/f', '/tn', _taskName]);
+    return elevated(['sc.exe', 'delete', _serviceName]);
+  }
 
   @override
-  Future<ProcessResult> controlService(String verb) {
+  Future<ProcessResult> controlService(String verb) async {
+    if (_userScope) {
+      if (verb == 'restart') {
+        await Process.run('schtasks', ['/end', '/tn', _taskName]);
+      } else if (verb == 'stop') {
+        return Process.run('schtasks', ['/end', '/tn', _taskName]);
+      }
+      return Process.run('schtasks', ['/run', '/tn', _taskName]);
+    }
     final action = switch (verb) {
-      'restart' => 'restart', // handled below
+      'restart' => 'restart',
       'stop' => 'stop',
       _ => 'start',
     };
@@ -164,16 +199,31 @@ class WindowsPlatform implements AranPlatform {
 
   @override
   Future<Map<String, String>> serviceStatus() async {
-    final info = <String, String>{'installed': serviceInstalled() ? 'yes' : 'no', 'init': 'winsw'};
+    final info = <String, String>{
+      'installed': serviceInstalled() ? 'yes' : 'no',
+      'init': _userScope ? 'task-user' : 'winsw',
+    };
     try {
-      final r = await Process.run('sc.exe', ['query', _serviceName]);
-      final text = '${r.stdout}';
-      info['active'] = text.contains('RUNNING')
-          ? 'active'
-          : text.contains('STOPPED')
-              ? 'inactive'
-              : 'unknown';
-      info['enabled'] = 'auto';
+      if (_userScope) {
+        final r = await Process.run('schtasks', ['/query', '/tn', _taskName, '/fo', 'LIST', '/v']);
+        final text = '${r.stdout}';
+        // Locale-dependent, so match both the English and Chinese words.
+        info['active'] = text.contains('Running') || text.contains('正在运行')
+            ? 'active'
+            : text.contains('Ready') || text.contains('就绪')
+                ? 'inactive'
+                : 'unknown';
+        info['enabled'] = 'onlogon';
+      } else {
+        final r = await Process.run('sc.exe', ['query', _serviceName]);
+        final text = '${r.stdout}';
+        info['active'] = text.contains('RUNNING')
+            ? 'active'
+            : text.contains('STOPPED')
+                ? 'inactive'
+                : 'unknown';
+        info['enabled'] = 'auto';
+      }
     } catch (_) {
       info['active'] = 'unknown';
     }
@@ -182,6 +232,7 @@ class WindowsPlatform implements AranPlatform {
 
   @override
   Future<void> enableService() async {
+    if (_userScope) return; // logon task is already triggered at logon
     await elevated(['sc.exe', 'config', _serviceName, 'start=', 'auto']);
   }
 
