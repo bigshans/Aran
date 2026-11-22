@@ -123,6 +123,24 @@ class SmartDns {
 
   static bool get available => _extracted != null || findBinary() != null;
 
+  /// smartdns 有两套实现，CLI 不同：
+  ///   pymumu/smartdns (C):  smartdns -f -c conf -x pid   （POSIX 为主）
+  ///   mokeyish/smartdns-rs: smartdns run -c conf          （Rust，有 Windows 构建）
+  /// 用 `run --help` 探测：只有 Rust 版有 run 子命令。
+  static final Map<String, bool> _rsCache = {};
+
+  static Future<bool> isRustVariant(String bin) async {
+    final hit = _rsCache[bin];
+    if (hit != null) return hit;
+    var rs = false;
+    try {
+      final r = await Process.run(bin, ['run', '--help']);
+      rs = r.exitCode == 0 && '${r.stdout}${r.stderr}'.toLowerCase().contains('run');
+    } catch (_) {}
+    _rsCache[bin] = rs;
+    return rs;
+  }
+
   String buildConfig({
     required List<String> upstreams,
     required int cacheSize,
@@ -182,7 +200,11 @@ class SmartDns {
     ));
 
     try {
-      final proc = await Process.start(bin, ['-f', '-c', conf.path, '-x', '${dataDir.path}/smartdns.pid']);
+      final argv = await isRustVariant(bin)
+          ? <String>['run', '-c', conf.path]
+          : <String>['-f', '-c', conf.path, '-x', '${dataDir.path}/smartdns.pid'];
+      final proc = await Process.start(bin, argv);
+      onLog('[smartdns] 启动：$bin ${argv.join(' ')}');
       _proc = proc;
       _running = true;
       proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((l) => onLog('[smartdns] $l'));

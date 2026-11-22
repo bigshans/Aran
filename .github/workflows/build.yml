@@ -82,11 +82,21 @@ jobs:
       - name: 安装 Inno Setup（生成 setup.exe）
         run: choco install innosetup --no-progress -y
 
+      - name: 取 smartdns-rs（Windows 构建）
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mokeyish/smartdns-rs/releases/download/v0.13.1/smartdns-x86_64-pc-windows-msvc-v0.13.1.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\srs.zip" -UseBasicParsing
+          Expand-Archive "$env:RUNNER_TEMP\srs.zip" -DestinationPath "$env:RUNNER_TEMP\srs" -Force
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\srs" -Recurse -Filter smartdns.exe | Select-Object -First 1
+          Copy-Item $exe.FullName "$env:RUNNER_TEMP\smartdns.exe" -Force
+          & "$env:RUNNER_TEMP\smartdns.exe" --version | Select-Object -First 1
+
       - name: 打包（便携 ZIP + 安装包）
         shell: pwsh
         run: |
-          # smartdns 不支持 Windows，只内嵌 mihomo；DNS 用 mihomo 内置
-          .\scripts\package-windows.ps1 -Kernel "$env:RUNNER_TEMP\mihomo.exe"
+          # pymumu/smartdns 没有 Windows 构建；用 mokeyish/smartdns-rs（同一份配置格式）
+          .\scripts\package-windows.ps1 -Kernel "$env:RUNNER_TEMP\mihomo.exe" -SmartDns "$env:RUNNER_TEMP\smartdns.exe"
 
       - uses: actions/upload-artifact@v4
         with:

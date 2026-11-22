@@ -386,13 +386,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     _multiline('nameservers')),
                 _row('fallback', '每行一个；用于解析被污染的域名', _multiline('fallback', lines: 2)),
               ]),
-              if (!Platform.isWindows) _card('SmartDNS（可选）', [
+              _card('SmartDNS（可选）', [
                 _row('SmartDNS 二进制', _smartDnsHint(), _smartDnsPicker(context)),
                 _row(
                   '启用 SmartDNS',
                   SmartDns.available
                       ? '外部 smartdns 进程做多上游测速 + 缓存，mihomo 只做 fake-ip 与分流'
-                      : '未安装：sudo pacman -S smartdns（装好后重启 Aran 即可启用）',
+                      : (Platform.isWindows
+                          ? '未安装：放到数据目录 bin\\smartdns.exe，或在设置里指定路径（Windows 用 smartdns-rs 构建）'
+                          : '未安装：sudo pacman -S smartdns（装好后重启 Aran 即可启用）'),
                   _toggle(
                     _draft.dnsProvider == 'smartdns',
                     SmartDns.available
@@ -408,11 +410,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 _row('仅 IPv4', '强制返回 A 记录（AAAA 返回 SOA）',
                     _toggle(_draft.smartdnsIpv4Only, (v) => _update(_draft.copyWith(smartdnsIpv4Only: v)))),
               ]),
-              if (Platform.isWindows)
-                _card('DNS', [
-                  _row('DNS 提供方', 'smartdns 不支持 Windows（上游无 Windows 构建），使用 mihomo 内置 DNS',
-                      Text('builtin', style: mono.copyWith(fontSize: 12, color: dim))),
-                ]),
               _card('嗅探', [
                 _row('启用嗅探', 'sniffer：从 TLS SNI / HTTP Host 还原域名，提高分流准确率',
                     _toggle(_draft.snifferEnabled, (v) => _update(_draft.copyWith(snifferEnabled: v)))),
