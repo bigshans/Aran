@@ -52,30 +52,29 @@ if ($SmartDns) {
   Write-Host ("    内嵌 SmartDNS: {0} ({1:N0} KB)" -f $SmartDns, ((Get-Item $SmartDns).Length / 1KB))
 }
 
-# 干净的 Windows（LTSC/Server）不自带 VC++ 运行库，缺 VC 运行库时 exe 直接
-# 0xC0000135 退出。把运行库一起塞进便携包，做到解压即跑。
-$redistDirs = @(
-  "$env:VCToolsRedistDir\x64\Microsoft.VC143.CRT",
-  "$env:VCINSTALLDIR\Redist\MSVC\*\x64\Microsoft.VC143.CRT"
+# 干净的 Windows（LTSC/Server）不自带 VC++ 运行库，缺了 exe 直接 0xC0000135 退出。
+# 三个 DLL 合计约 720KB，比让用户装 25MB 的 vc_redist 划算（也不需要管理员）。
+$crt = $null
+$globs = @(
+  "$env:VCToolsRedistDir\x64\Microsoft.VC14*.CRT",
+  "C:\Program Files\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT",
+  "C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT"
 )
-$redist = $null
-foreach ($d in $redistDirs) {
-  $hit = Get-Item $d -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($hit) { $redist = $hit.FullName; break }
+foreach ($g in $globs) {
+  $crt = Get-ChildItem $g -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+  if ($crt) { break }
 }
-if (-not $redist) {
-  $vsRoot = "C:\Program Files\Microsoft Visual Studio"
-  $redist = Get-ChildItem "$vsRoot\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -ErrorAction SilentlyContinue |
-    Select-Object -First 1 -ExpandProperty FullName
-}
-if ($redist) {
-  foreach ($dll in @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','concrt140.dll')) {
-    $src = Join-Path $redist $dll
-    if (Test-Path $src) { Copy-Item $src "$bundle\$dll" -Force }
+if ($crt) {
+  $copied = @()
+  foreach ($dll in @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll')) {
+    $src = Join-Path $crt $dll
+    if (Test-Path $src) { Copy-Item $src "$bundle\$dll" -Force; $copied += $dll }
   }
-  Write-Host "    已附带 VC++ 运行库（可解压即跑）"
+  $kb = ($copied | ForEach-Object { (Get-Item "$bundle\$_").Length } | Measure-Object -Sum).Sum / 1KB
+  Write-Host ("    附带 VC++ 运行库: {0} ({1:N0} KB)" -f ($copied -join ', '), $kb)
 } else {
-  Write-Warning "未找到 VC++ 运行库（VCToolsRedistDir），便携包在干净系统上需先装 vc_redist.x64.exe"
+  Write-Warning "未找到 VC++ 运行库，便携包在干净系统上需先装 vc_redist.x64.exe"
 }
 
 if ($Kernel -or $SmartDns) {
