@@ -200,11 +200,25 @@ class SmartDns {
     ));
 
     try {
-      final argv = await isRustVariant(bin)
-          ? <String>['run', '-c', conf.path]
-          : <String>['-f', '-c', conf.path, '-x', '${dataDir.path}/smartdns.pid'];
-      final proc = await Process.start(bin, argv);
+      // 约定：Linux 用 pymumu/smartdns（原版 C 实现，发行版仓库里就有），
+      //       Windows 用 mokeyish/smartdns-rs（唯一有 Windows 构建的实现）。
+      // 两者的 CLI 不同，这里按平台决定；若首选用法立刻失败，再回退另一种。
+      final pymumuArgs = <String>['-f', '-c', conf.path, '-x', '${dataDir.path}/smartdns.pid'];
+      final rustArgs = <String>['run', '-c', conf.path];
+      var argv = Platform.isWindows ? rustArgs : pymumuArgs;
+      var proc = await Process.start(bin, argv);
       onLog('[smartdns] 启动：$bin ${argv.join(' ')}');
+      // 立刻退出说明命令行用法不对（例如把 rs 版放到 Linux 上），换另一种再试。
+      final earlyExit = await proc.exitCode
+          .timeout(const Duration(milliseconds: 800), onTimeout: () => -999)
+          .then((code) => code != -999 && code != 0);
+      if (earlyExit) {
+        final alt = Platform.isWindows ? pymumuArgs : rustArgs;
+        onLog('[smartdns] 首选用法失败，回退：${alt.join(' ')}');
+        proc = await Process.start(bin, alt);
+        argv = alt;
+        onLog('[smartdns] 启动：$bin ${argv.join(' ')}');
+      }
       _proc = proc;
       _running = true;
       proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((l) => onLog('[smartdns] $l'));
