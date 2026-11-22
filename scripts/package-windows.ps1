@@ -123,6 +123,21 @@ if (-not $SkipInstaller) {
   if (-not $iscc) {
     Write-Warning "未找到 Inno Setup 6（ISCC.exe），跳过安装包。可从 https://jrsoftware.org/isdl.php 安装后重跑。"
   } else {
+    # Inno Setup 只自带英文；中文语言包是 Unofficial 目录里的独立文件，缺了就编不过
+    $langDir = Join-Path (Split-Path -Parent $iscc) "Languages"
+    $zh = Join-Path $langDir "ChineseSimplified.isl"
+    if (-not (Test-Path $zh)) {
+      Write-Host "    下载中文语言包 ChineseSimplified.isl"
+      $url = "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+      New-Item -ItemType Directory -Force $langDir | Out-Null
+      try {
+        Invoke-WebRequest -Uri $url -OutFile $zh -UseBasicParsing
+      } catch {
+        Write-Warning "语言包下载失败，改用纯英文安装包：$($_.Exception.Message)"
+        (Get-Content packaging\windows\aran.iss) -replace 'MessagesFile: "compiler:Languages\\ChineseSimplified.isl"', 'MessagesFile: "compiler:Default.isl"' |
+          Set-Content packaging\windows\aran.iss -Encoding UTF8
+      }
+    }
     Write-Host "==> 生成安装包"
     & $iscc `
       "/DMyAppVersion=$version" `
