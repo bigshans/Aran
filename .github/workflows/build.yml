@@ -1,0 +1,123 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: 3.47.9
+  MIHOMO_VERSION: v1.19.34
+  SMARTDNS_TAG: Release48.5
+  SMARTDNS_ASSET: smartdns.1.2026.11.20-0147.x86_64-linux-all.tar.gz
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 依赖（GTK / clang / ninja / appindicator）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            liblzma-dev libblkid-dev libayatana-appindicator3-dev xz-utils
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 取 mihomo + smartdns
+        run: |
+          mkdir -p /tmp/bin
+          curl -fsSL -o /tmp/bin/mihomo.gz \
+            "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VERSION/mihomo-linux-amd64-compatible-$MIHOMO_VERSION.gz"
+          gunzip -f /tmp/bin/mihomo.gz
+          chmod +x /tmp/bin/mihomo
+          curl -fsSL -o /tmp/bin/smartdns.tgz \
+            "https://github.com/pymumu/smartdns/releases/download/$SMARTDNS_TAG/$SMARTDNS_ASSET"
+          tar -xzf /tmp/bin/smartdns.tgz -C /tmp/bin
+          find /tmp/bin -name smartdns -type f -exec cp {} /tmp/bin/smartdns.bin \; || true
+          chmod +x /tmp/bin/smartdns.bin
+          /tmp/bin/mihomo -v | head -1
+          /tmp/bin/smartdns.bin -v | head -1
+
+      - name: 打通用包（CI 无 makepkg，只出 tar.gz）
+        env:
+          ARAN_KERNEL: /tmp/bin/mihomo
+          ARAN_SMARTDNS: /tmp/bin/smartdns.bin
+        run: ./scripts/package-linux.sh --no-arch
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: dist/aran-*-linux-x64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 取 mihomo（Windows）
+        shell: pwsh
+        run: |
+          $url = "https://github.com/MetaCubeX/mihomo/releases/download/$env:MIHOMO_VERSION/mihomo-windows-amd64-compatible-$env:MIHOMO_VERSION.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\mihomo.zip" -UseBasicParsing
+          Expand-Archive "$env:RUNNER_TEMP\mihomo.zip" -DestinationPath "$env:RUNNER_TEMP\mihomo" -Force
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\mihomo" -Filter *.exe | Select-Object -First 1
+          Copy-Item $exe.FullName "$env:RUNNER_TEMP\mihomo.exe" -Force
+          & "$env:RUNNER_TEMP\mihomo.exe" -v | Select-Object -First 1
+
+      - name: 安装 Inno Setup（生成 setup.exe）
+        run: choco install innosetup --no-progress -y
+
+      - name: 打包（便携 ZIP + 安装包）
+        shell: pwsh
+        run: |
+          # smartdns 不支持 Windows，只内嵌 mihomo；DNS 用 mihomo 内置
+          .\scripts\package-windows.ps1 -Kernel "$env:RUNNER_TEMP\mihomo.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist\aran-*-windows-x64*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 汇总校验和
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' \) -exec cp {} . \;
+          find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' \) -print0 \
+            | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/SHA256SUMS
+          generate_release_notes: true

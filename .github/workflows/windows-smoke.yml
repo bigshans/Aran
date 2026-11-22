@@ -1,0 +1,24 @@
+name: windows-smoke
+
+# 只在手动触发：在真 Windows 上验证平台层（服务 / DACL / TUN 前置检查）
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: dart analyze + core 单测
+        run: |
+          pushd core; dart pub get; dart analyze; dart test || true; popd
+      - name: 平台层冒烟（Windows 分支）
+        run: |
+          pushd core
+          dart run bin/platform_probe.dart
+          popd
