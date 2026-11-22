@@ -32,6 +32,13 @@ class SmartDns {
   static String get _localData {
     final local = Platform.environment['LOCALAPPDATA'];
     if (local != null) return '$local\\Aran';
+    // Windows 上 HOME 通常未定义，回退到 './local' 会变成相对路径并创建失败
+    if (Platform.isWindows) {
+      final profile = Platform.environment['USERPROFILE'] ??
+          Platform.environment['APPDATA'] ??
+          'C:\\Users\\Public';
+      return '$profile\\AppData\\Local\\Aran';
+    }
     final home = Platform.environment['HOME'] ?? '.';
     return '$home/.local/share/aran';
   }

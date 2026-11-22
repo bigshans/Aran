@@ -236,7 +236,7 @@ class KernelManager {
       }));
 
       final api = MihomoApi(addr: '127.0.0.1:$_controllerPort', secret: _secret);
-      final deadline = DateTime.now().add(const Duration(seconds: 12));
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
       String? version;
       while (DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -250,7 +250,7 @@ class KernelManager {
       api.close();
 
       if (version == null) {
-        _status = _status.copyWith(state: KernelState.failed, error: '内核启动后 12 秒内控制器未就绪');
+        _status = _status.copyWith(state: KernelState.failed, error: '内核启动后 20 秒内控制器未就绪');
         await stop();
         return _status;
       }

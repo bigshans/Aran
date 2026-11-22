@@ -176,8 +176,14 @@ class Engine {
   }) : auditPath = auditPath ?? defaultAuditPath();
 
   static String defaultAuditPath() {
-    final home = Platform.environment['HOME'] ?? '.';
-    return '$home/.local/share/aran/audit.jsonl';
+    // Never hand-build a POSIX path: on Windows `HOME` is usually unset, which
+    // turned this into the relative './local/share/aran' and threw EACCES.
+    final p = createPlatform();
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '.';
+    final dir = p.dataDir(Platform.environment['XDG_DATA_HOME'], home);
+    return '${dir.path}${Platform.pathSeparator}audit.jsonl';
   }
 
   String? get group => _group;
