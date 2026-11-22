@@ -28,8 +28,14 @@ if [ "$MODE" = "embedded" ]; then
     echo "找不到 mihomo：设置 ARAN_KERNEL=/path/to/mihomo，或用 --slim 打瘦身包" >&2
     exit 1
   fi
-  echo "==> 构建 release（内嵌内核：$KERNEL）"
-  ./scripts/build-app.sh --kernel "$KERNEL" >/dev/null
+  SMARTDNS="${ARAN_SMARTDNS:-$(command -v smartdns || true)}"
+  if [ -n "${SMARTDNS:-}" ] && [ -x "${SMARTDNS:-/nonexistent}" ]; then
+    echo "==> 构建 release（内嵌内核: $KERNEL / 内嵌 smartdns: $SMARTDNS）"
+    ./scripts/build-app.sh --kernel "$KERNEL" --smartdns "$SMARTDNS" >/dev/null
+  else
+    echo "==> 构建 release（内嵌内核：$KERNEL，未找到 smartdns）"
+    ./scripts/build-app.sh --kernel "$KERNEL" >/dev/null
+  fi
 else
   echo "==> 构建 release（slim：不含内核）"
   ./scripts/build-app.sh >/dev/null
@@ -43,6 +49,7 @@ if [ -f "$ASSETS/bin/mihomo" ]; then
 else
   echo "    内嵌内核: 无（slim）"
 fi
+echo "    内嵌 SmartDNS: $(if [ -f "$ASSETS/bin/smartdns" ]; then du -h "$ASSETS/bin/smartdns" | cut -f1; else echo '无'; fi)"
 echo "    服务模板: $(ls "$ASSETS/service" 2>/dev/null | tr '\n' ' ')"
 PKG="$STAGE/aran-$VER-linux-x64"
 mkdir -p "$PKG"
