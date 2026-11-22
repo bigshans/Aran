@@ -169,8 +169,21 @@ class WindowsPlatform implements AranPlatform {
     }
     // `binPath` must be one quoted argument; sc.exe needs the space after '='.
     final bin = '"$kernelPath" -d "$dataDir"';
-    return elevated(['sc.exe', 'create', _serviceName, 'binPath=', bin, 'start=', 'auto']);
+    final create =
+        await elevated(['sc.exe', 'create', _serviceName, 'binPath=', bin, 'start=', 'auto']);
+    if (create.exitCode != 0) return create;
+    // Same trick the clash helper services use: grant interactive users
+    // SERVICE_START/SERVICE_STOP in the service DACL, so later start/stop need
+    // no UAC. Single privileged step, exactly like installing a helper service.
+    await elevated(['sc.exe', 'sdset', _serviceName, _serviceSddl]);
+    return create;
   }
+
+  /// SY/BA full control, IU/SU may query + start + stop.
+  static const _serviceSddl =
+      'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)'
+      '(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;CCLCSWRPWPDTLOCRRC;;;SU)'
+      'S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)';
 
   @override
   Future<ProcessResult> uninstallService(String scriptPath) {
@@ -188,13 +201,13 @@ class WindowsPlatform implements AranPlatform {
       }
       return Process.run('schtasks', ['/run', '/tn', _taskName]);
     }
-    final action = switch (verb) {
-      'restart' => 'restart',
-      'stop' => 'stop',
-      _ => 'start',
-    };
-    if (verb == 'restart') return elevated(['sc.exe', 'stop', _serviceName]);
-    return elevated(['sc.exe', action, _serviceName]);
+    if (verb == 'restart') {
+      await Process.run('sc.exe', ['stop', _serviceName]);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      return Process.run('sc.exe', ['start', _serviceName]);
+    }
+    // Allowed by the DACL installed above → no UAC.
+    return Process.run('sc.exe', [verb == 'stop' ? 'stop' : 'start', _serviceName]);
   }
 
   @override

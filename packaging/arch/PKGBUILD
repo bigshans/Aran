@@ -17,10 +17,12 @@ optdepends=(
 provides=('aran')
 conflicts=('aran')
 options=('!strip')
-source=("aran-${pkgver}.tar.gz")
-sha256sums=('SKIP')
+source=("aran-${pkgver}.tar.gz" "50-aran-kernel.rules")
+sha256sums=('SKIP' 'SKIP')
 
 package() {
+  install -Dm644 "$srcdir/50-aran-kernel.rules" \
+    "$pkgdir/usr/share/polkit-1/rules.d/50-aran-kernel.rules"
   local dir="$srcdir/aran-${pkgver}-linux-x64"
 
   install -d "$pkgdir/opt/aran"

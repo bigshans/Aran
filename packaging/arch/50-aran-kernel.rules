@@ -1,0 +1,13 @@
+// Let the desktop user start/stop/restart the Aran kernel unit without a password.
+// Same purpose as the helper-service DACL on Windows: one privileged act at
+// install time, zero prompts afterwards. Scoped to a single unit on purpose.
+polkit.addRule(function (action, subject) {
+  if (action.id !== 'org.freedesktop.systemd1.manage-units') return;
+  var unit = action.lookup('unit');
+  if (unit !== 'aran-kernel.service' && unit !== 'aran-kernel') return;
+  var verb = action.lookup('verb');
+  if (verb !== 'start' && verb !== 'stop' && verb !== 'restart' && verb !== 'reload') return;
+  if (subject.isInGroup('wheel') || subject.isInGroup('admin')) {
+    return polkit.Result.YES;
+  }
+});

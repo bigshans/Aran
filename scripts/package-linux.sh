@@ -64,6 +64,14 @@ install -m644 "$ROOT/LICENSE" "$LICDIR/ARAN-LICENSE"
 [ -f "$ROOT/packaging/licenses/smartdns-LICENSE" ] && install -m644 "$ROOT/packaging/licenses/smartdns-LICENSE" "$LICDIR/smartdns-LICENSE"
 echo "    许可证: $(ls "$LICDIR" | tr '\n' ' ')"
 
+# Optional polkit rule: with a system-scope unit this removes the password
+# prompt on start/stop (mirrors the service DACL trick used on Windows).
+if [ -f "$ROOT/packaging/polkit/50-aran-kernel.rules" ]; then
+  install -Dm644 "$ROOT/packaging/polkit/50-aran-kernel.rules" \
+    "$PKG/share/polkit/50-aran-kernel.rules"
+  POLKIT_ON=1
+fi
+
 cat > "$PKG/aran" <<'RUN'
 #!/usr/bin/env bash
 # Launcher that survives being symlinked (e.g. /usr/bin/aran -> /opt/aran/aran).
@@ -132,6 +140,7 @@ if [ "$ARCH_ON" = "1" ]; then
   PKGDIR="$ROOT/packaging/arch"
   rm -rf "$PKGDIR/src" "$PKGDIR/pkg" "$PKGDIR"/*.pkg.tar.* 2>/dev/null || true
   cp "$TARBALL" "$PKGDIR/aran-$VER.tar.gz"
+  cp "$ROOT/packaging/polkit/50-aran-kernel.rules" "$PKGDIR/50-aran-kernel.rules"
   ( cd "$PKGDIR" && PKGEXT='.pkg.tar.zst' makepkg -f --nodeps --noconfirm >/dev/null )
   cp "$PKGDIR"/*.pkg.tar.zst "$OUT"/ 2>/dev/null || true
   rm -rf "$PKGDIR/src" "$PKGDIR/pkg" "$PKGDIR/aran-$VER.tar.gz"
